@@ -28,7 +28,34 @@ const CONFIG = {
     channel: process.env.CHROMIUM_CHANNEL || undefined,
     healthCheckTimeoutMs: 5000,
     tabCreateRetries: 3,
+    // Remote Browserless / CDP endpoint configuration
+    browserlessUrl: process.env.BROWSERLESS_URL || process.env.BROWSER_WS_ENDPOINT || process.env.BROWSER_URL || undefined,
+    browserlessToken: process.env.BROWSERLESS_TOKEN || undefined,
+    browserlessFallbackLocal: process.env.BROWSERLESS_FALLBACK_LOCAL !== 'false',
 };
+
+// Normalize any HTTP/HTTPS/WS/WSS Browserless endpoint into a valid CDP WebSocket URL
+function normalizeBrowserlessEndpoint(rawUrl, token) {
+    if (!rawUrl) return null;
+    let url = rawUrl.trim();
+    if (url.startsWith('https://')) {
+        url = url.replace('https://', 'wss://');
+    } else if (url.startsWith('http://')) {
+        url = url.replace('http://', 'ws://');
+    }
+    try {
+        const parsed = new URL(url);
+        if (!parsed.pathname || parsed.pathname === '/' || parsed.pathname === '') {
+            parsed.pathname = '/chromium';
+        }
+        if (token && !parsed.searchParams.has('token')) {
+            parsed.searchParams.set('token', token);
+        }
+        return parsed.toString();
+    } catch (_) {
+        return url;
+    }
+}
 
 const STATE_FILE = path.join(CONFIG.userDataDir, 'session_state.json');
 
@@ -78,9 +105,53 @@ function buildLaunchOptions() {
 }
 
 // Launch browser with exponential backoff retry.
-// Why: Chromium launch can fail transiently (port conflicts, memory pressure).
-// Exponential backoff avoids thundering herd on repeated failures.
+// Supports both remote Browserless instances (via CDP) and local persistent contexts.
 async function launchWithRetry() {
+    const remoteEndpoint = normalizeBrowserlessEndpoint(CONFIG.browserlessUrl, CONFIG.browserlessToken);
+
+    // If a remote Browserless / CDP endpoint is configured, connect to it
+    if (remoteEndpoint) {
+        const masked = remoteEndpoint.replace(/token=([^&]+)/g, 'token=***');
+        console.error(`[Browser] Using remote Browserless instance: ${masked}`);
+        let lastErr;
+        for (let attempt = 0; attempt <= CONFIG.launchRetries; attempt++) {
+            try {
+                const remoteBrowser = await chromium.connectOverCDP(remoteEndpoint, {
+                    timeout: 30000,
+                });
+                const ctx = remoteBrowser.contexts()[0] || await remoteBrowser.newContext({
+                    viewport: CONFIG.viewport,
+                    userAgent: 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0',
+                });
+
+                // Wrap close so shutting down context closes the remote browser connection cleanly
+                const origClose = ctx.close.bind(ctx);
+                ctx.close = async () => {
+                    try { await origClose(); } catch (_) {}
+                    try { await remoteBrowser.close(); } catch (_) {}
+                };
+
+                if (attempt > 0) console.error(`[Browser] Remote connection succeeded on attempt ${attempt + 1}.`);
+                return ctx;
+            } catch (e) {
+                lastErr = e;
+                const total = CONFIG.launchRetries + 1;
+                if (attempt < CONFIG.launchRetries) {
+                    const wait = CONFIG.launchBackoffMs * Math.pow(2, attempt);
+                    console.error(`[Browser] Remote connection attempt ${attempt + 1}/${total} failed: ${e.message}. Retrying in ${wait}ms...`);
+                    await new Promise(r => setTimeout(r, wait));
+                }
+            }
+        }
+
+        if (CONFIG.browserlessFallbackLocal) {
+            console.error(`[Browser] Remote Browserless failed after ${CONFIG.launchRetries + 1} attempt(s): ${lastErr?.message}. Falling back to local Chromium persistent context...`);
+        } else {
+            throw new Error(`Remote Browserless connection failed after ${CONFIG.launchRetries + 1} attempt(s): ${lastErr?.message}`);
+        }
+    }
+
+    // Local persistent context launch
     let lastErr;
     for (let attempt = 0; attempt <= CONFIG.launchRetries; attempt++) {
         try {
@@ -156,7 +227,12 @@ async function getBrowserContext() {
         if (pages[0] && pages[0].url() !== 'about:blank') {
             pages[0].goto('about:blank').catch(() => {});
         }
-        activePage = pages[0];
+        if (pages[0]) {
+            activePage = pages[0];
+        } else {
+            activePage = await browserContext.newPage();
+        }
+        setupPage(activePage);
     }
     return browserContext;
 }

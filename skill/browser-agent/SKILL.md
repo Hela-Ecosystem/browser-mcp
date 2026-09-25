@@ -521,3 +521,19 @@ browser_emulate(
 )
 ```
 
+## Remote Browserless Support
+
+`browser-agent` natively supports connecting to remote Browserless instances over Chrome DevTools Protocol (CDP). When configured, all Playwright browser automation is offloaded to the dedicated remote Browserless server.
+
+Configure via environment or `.env` in the MCP directory:
+```bash
+# Dedicated Browserless endpoint (auto-normalizes https/http/wss/ws)
+BROWSERLESS_URL=https://browserless.example.com
+
+# Fall back to local Chromium if remote instance is unreachable (default: true)
+BROWSERLESS_FALLBACK_LOCAL=true
+
+# Optional auth token if server requires authentication
+# BROWSERLESS_TOKEN=
+```
+

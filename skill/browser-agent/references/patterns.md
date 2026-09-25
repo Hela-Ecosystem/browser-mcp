@@ -50,6 +50,15 @@ browser_health()
 // If pageResponsive=false, the next tool call will reset the context automatically.
 ```
 
+## Remote Browserless Connectivity
+```
+// When BROWSERLESS_URL is set, all automation runs on the remote Browserless cluster.
+// Verify connectivity and response latency:
+browser_health()
+// If connection to Browserless fails and BROWSERLESS_FALLBACK_LOCAL=true, it transparently
+// switches to local Chromium without failing the calling tool.
+```
+
 ## Deep Content Extraction
 ```
 browser_get_state()                          // identify semantic headings and blocks

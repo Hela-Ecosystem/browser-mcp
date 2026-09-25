@@ -12,6 +12,7 @@ A modular, production-ready browser automation agent implemented as a Model Cont
 - **Resilient Navigation**: Automatic retry with configurable attempts and backoff on network failures.
 - **Request Interception**: Block, mock, or modify requests at the network level — stub APIs, strip ads, inject auth headers.
 - **Session & Persistence**: Persistent browser contexts with named session save/load for both cookies and Web Storage (`localStorage`/`sessionStorage`).
+- **Remote Browserless Support**: Seamlessly offload browser automation to remote [Browserless](https://github.com/browserless/browserless) instances over Chrome DevTools Protocol (CDP) via WebSocket (`ws://`, `wss://`) or HTTPS (`http://`, `https://`). Features automatic endpoint normalization, token authentication, connection retries, and automatic fallback to local Chromium.
 - **Crash Recovery**: Browser state is automatically persisted to disk. If the browser process dies, tabs and intercept rules are restored on the next tool call — no data loss.
 - **Parallel Agents**: Run independent named pages within a single browser context. Create, switch, and remove agents to handle multi-page workflows without interference.
 - **PDF Export**: Save pages to disk as PDF with a custom output path and accurate file size reporting.
@@ -261,13 +262,42 @@ browser_clear_mocks()
 - npm
 
 ### Setup
+
 ```bash
+# Standard local setup (installs npm deps and bundled Playwright Chromium)
 bash install.sh
+
+# Or lightweight setup for remote Browserless (no local browser binaries needed):
+npm install --production
 ```
+
+## Remote Browserless Connection
+
+The agent natively supports offloading all browser automation to a remote [Browserless](https://github.com/browserless/browserless) instance (self-hosted or cloud) via Chrome DevTools Protocol (CDP).
+
+### Advantages:
+- **Zero Heavy Binaries**: Ideal for lightweight VPS, Docker containers, or ARM servers (e.g. Oracle Cloud A1, Raspberry Pi) without needing gigabytes of Chromium binaries, GUI libraries, or X11/Wayland display servers.
+- **Centralized Agent Fleet**: Multiple AI agents and MCP servers across different hosts can concurrently drive the same Browserless instance.
+- **Failover Protection**: Automatically falls back to launching local Chromium if the remote server becomes unavailable (enabled by default).
+
+### Quick Setup:
+Add to your `.env` file or MCP server `env` configuration:
+```env
+# Remote Browserless endpoint (supports https://, http://, wss://, ws://)
+BROWSERLESS_URL=https://browserless.example.com
+
+# Optional auth token if the Browserless instance requires authentication
+# BROWSERLESS_TOKEN=my-secret-token
+
+# Enable/disable automatic fallback to local Chromium (default: true)
+BROWSERLESS_FALLBACK_LOCAL=true
+```
+
+> **Endpoint Auto-Normalization**: You can provide a plain HTTP/HTTPS URL (e.g. `https://browserless.example.com`). The agent automatically normalizes it into Playwright's required WebSocket CDP endpoint (`wss://browserless.example.com/chromium`) and attaches authentication query parameters if provided.
 
 ## Cookie Injection (Firefox Sync)
 
-Place a `cookies.json` file in the project root. The agent will automatically inject these cookies into every new session.
+Place a `cookies.json` file in the project root. The agent will automatically inject these cookies into every new session (both local and remote Browserless sessions).
 
 ## Configuration
 
@@ -279,7 +309,9 @@ Register in your MCP client config:
     "browser-mcp": {
       "command": "node",
       "args": ["/absolute/path/to/browser-mcp/src/server.js"],
-      "env": {}
+      "env": {
+        "BROWSERLESS_URL": "https://browserless.example.com"
+      }
     }
   }
 }
@@ -291,6 +323,9 @@ Register in your MCP client config:
 |-----|---------|-------------|
 | `START_URL` | — | Page to open when the session starts. |
 | `GOAL` | — | Task description exposed to MCP clients. |
+| `BROWSERLESS_URL` | — | Connect to a remote Browserless instance over CDP (supports `http://`, `https://`, `ws://`, `wss://`). Auto-normalizes to `/chromium` WebSocket endpoint. |
+| `BROWSERLESS_TOKEN` | — | Authentication token for secured Browserless instances (passed as `?token=...`). |
+| `BROWSERLESS_FALLBACK_LOCAL` | `true` | When `true`, automatically falls back to launching local Chromium if the remote Browserless connection fails. |
 | `CHROMIUM_EXECUTABLE_PATH` | Playwright bundled | Path to a dedicated Chromium binary. If set, Playwright uses this instead of its bundled Chromium. |
 | `CHROMIUM_CHANNEL` | — | Playwright channel hint (e.g. `chromium`, `chrome`, `chrome-beta`). Ignored if `CHROMIUM_EXECUTABLE_PATH` is set. |
 | `BROWSER_HEADLESS` | `false` | Set to `true` for headless operation (CI / production). |
