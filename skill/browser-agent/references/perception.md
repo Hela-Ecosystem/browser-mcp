@@ -2,15 +2,15 @@
 
 Read page content as structured data instead of raw DOM text.
 
-## browser_get_page_markdown
+## browser_get_content (markdown)
 
 Extract page content as Markdown with headings, lists, tables, and links.
 
 ### Usage
 ```
-browser_get_page_markdown()                    // full page (main/article/content/body)
-browser_get_page_markdown(selector="article")  // scoped to element
-browser_get_page_markdown(selector="#results", maxLength=2000)
+browser_get_content(format="markdown")                    // full page (main/article/content/body)
+browser_get_content(format="markdown", selector="article")  // scoped to element
+browser_get_content(format="markdown", selector="#results", maxLength=2000)
 ```
 
 ### Output Format
@@ -31,22 +31,22 @@ browser_get_page_markdown(selector="#results", maxLength=2000)
 - Reading article content for comprehension
 - Extracting product information
 - Understanding page structure
--替代 `browser_get_text()` when you need structure
+- Instead of `browser_get_content(format="text")` when you need structure
 
 ### When NOT to Use
-- Just need a single element's text → use `browser_get_text(selector)`
-- Need exact HTML → use `browser_get_html(selector)`
+- Just need a single element's text → use `browser_get_content(format="text", selector=selector)`
+- Need exact HTML → use `browser_get_content(format="html", selector=selector)`
 - Need to interact with elements → use `browser_observe()`
 
-## browser_get_accessibility_tree
+## browser_get_content (axtree)
 
 Get the page's accessibility tree as structured text showing roles, names, and states.
 
 ### Usage
 ```
-browser_get_accessibility_tree()                    // full page
-browser_get_accessibility_tree(selector="#form")    // scoped
-browser_get_accessibility_tree(maxLength=3000)
+browser_get_content(format="axtree")                    // full page
+browser_get_content(format="axtree", selector="#form")  // scoped
+browser_get_content(format="axtree", maxLength=3000)
 ```
 
 ### Output Format
@@ -98,4 +98,4 @@ browser_get_state(mark_elements=true, screenshot=true)
 - Standard CSS selectors are failing due to complex SPAs or shadow DOMs.
 
 ### Why use `ref` instead of selectors?
-When you use `browser_click_ref(ref)`, the agent calculates absolute page coordinates and issues a raw mouse click. This natively bypasses iframe restrictions, pointer-events blocks, and obfuscated CSS classes.
+When you use `browser_click(ref=ref)`, the agent calculates absolute page coordinates and issues a raw mouse click. This natively bypasses iframe restrictions, pointer-events blocks, and obfuscated CSS classes.

@@ -5,7 +5,7 @@ description: "Professional browser automation agent for web navigation, interact
 
 # Browser Agent
 
-The skill is the entry point. The power is in `mcp__browser-agent__*` tools — **92 tools** covering the full Playwright API over CDP. Always call MCP tools directly; this skill maps task types to exact calls.
+The skill is the entry point. The power is in `mcp__browser-agent__*` tools — **73 tools** covering the full Playwright API over CDP. Always call MCP tools directly; this skill maps task types to exact calls.
 
 ## Companion MCPs
 
@@ -28,17 +28,17 @@ This browser agent works best paired with other MCPs for full power:
 | Sense page state (with visual) | `browser_get_state(screenshot=true)` | `browser_screenshot()` |
 | Sense page with Vision (Set-of-Mark) | `browser_get_state(screenshot=true, mark_elements=true)` | `browser_screenshot(mark_elements=true)` |
 | Enumerate interactable elements only | `browser_observe()` | `browser_get_state()` |
-| Click by element ref | `browser_click_ref(ref)` | `browser_click(selector)` |
+| Click by element ref | `browser_click(ref=ref)` | `browser_click(selector)` |
 | Click & Download File | `browser_download_click(ref, savePath?)` | — |
 | Diff AX tree snapshots | `browser_state_diff()` | — |
-| Extract Tables | `browser_extract_table(selector)` | `browser_get_text()` |
-| Semantic Click | `browser_click_text(text, type='button')` | `browser_click(selector)` |
+| Extract Tables | `browser_extract_table(selector)` | `browser_get_content(format='text', selector)` |
+| Semantic Click | `browser_click(text, type='button')` | `browser_click(selector)` |
 | Fill whole form (simple) | `browser_fill_form(data={...})` | `browser_type()` |
 | Fill whole form (type-aware) | `browser_fill_form(data={...}, typeAware=true)` | per-field `browser_type` |
 | Manage Tabs | `browser_new_tab()`, `browser_list_tabs()`, `browser_switch_tab(index)` | — |
-| Wait (networkidle) | `browser_wait_until_stable()` | `browser_wait(3000)` |
-| Wait (load event) | `browser_wait_for_load(state='load')` | `browser_wait_for_load(state='domcontentloaded')` |
-| Wait (URL/selector after action) | `browser_wait_for_navigation(urlPattern/selector)` | `browser_wait(1500)` |
+| Wait (networkidle) | `browser_wait(condition='stable')` | `browser_wait(condition='time', ms=3000)` |
+| Wait (load event) | `browser_wait(condition='load', state='load')` | `browser_wait(condition='load', state='domcontentloaded')` |
+| Wait (URL/selector after action) | `browser_wait(condition='navigation', target=...)` | `browser_wait(condition='time', ms=1500)` |
 | Save session (cookies only) | `browser_save_session(name)` | — |
 | Save session (full auth state) | `browser_save_session(name, includeStorage=true)` | — |
 | Load session | `browser_load_session(name)` | — |
@@ -53,13 +53,13 @@ This browser agent works best paired with other MCPs for full power:
 | Click element | `browser_click(selector)` | `browser_click(x, y)` — includes smart retry fallbacks |
 | Type text | `browser_type(selector, text, delay=120)` | — |
 | Select dropdown | `browser_select(selector, value)` | `browser_evaluate(script)` |
-| Select radio/checkbox by index | `browser_select_by_index(selector, index)` | `browser_click_ref(ref)` |
+| Select radio/checkbox by index | `browser_select_by_index(selector, index)` | `browser_click(ref=ref)` |
 | Check/uncheck | `browser_check(selector)` / `browser_uncheck(selector)` | — |
 | Hover then click | `browser_hover(selector)` → wait → `browser_click(selector)` | — |
-| Scroll to element | `browser_scroll_to(selector)` | `browser_scroll(direction, amount)` |
-| Lazy-load content | `browser_smart_scroll(steps=5)` | — |
-| Extract text | `browser_get_text(selector, all=true, maxLines=200)` | `browser_get_html(selector)` |
-| Extract visible text only | `browser_get_visible_text(selector)` | `browser_get_text(selector)` |
+| Scroll to element | `browser_scroll(mode='to', selector)` | `browser_scroll(mode='by', direction, amount)` |
+| Lazy-load content | `browser_scroll(mode='lazy', steps=5)` | — |
+| Extract text | `browser_get_content(format='text', selector, all=true, maxLines=200)` | `browser_get_content(format='html', selector)` |
+| Extract visible text only | `browser_get_content(format='visible', selector)` | `browser_get_content(format='text', selector)` |
 | Save page as PDF | `browser_print_to_pdf(outputPath)` | `browser_print_to_pdf()` (auto-named) |
 | Run JS in page | `browser_evaluate(script)` | `browser_evaluate(script, args={...})` |
 | Block requests | `browser_intercept(pattern, action='block')` | — |
@@ -88,18 +88,18 @@ This browser agent works best paired with other MCPs for full power:
 | Batch answer quiz | `browser_batch_answer_quiz(answers=[...])` | per-question `browser_select_by_index` + `browser_click` |
 | Switch to new tab | `browser_switch_to_new_tab(urlPattern)` | `browser_list_tabs()` + `browser_switch_tab()` |
 | Parallel page execution | `browser_parallel_execute(tasks=[...])` | sequential `browser_agent_switch` + actions |
-| Assert element visible | `browser_assert_visible(selector)` | `browser_get_state()` + check elements |
-| Assert element text | `browser_assert_text(selector, expected)` | `browser_get_text(selector)` + check content |
-| Assert URL contains | `browser_assert_url(pattern)` | check `page.url()` manually |
-| Read page as markdown | `browser_get_page_markdown(selector?)` | `browser_get_text(selector)` |
-| Get accessibility tree | `browser_get_accessibility_tree(selector?)` | `browser_get_state()` |
+| Assert element visible | `browser_assert(type='visible', target=selector)` | `browser_get_state()` + check elements |
+| Assert element text | `browser_assert(type='text', target=selector, expected)` | `browser_get_content(format='text', selector)` + check content |
+| Assert URL contains | `browser_assert(type='url', target=pattern)` | check `page.url()` manually |
+| Read page as markdown | `browser_get_content(format='markdown', selector?)` | `browser_get_content(format='text', selector)` |
+| Get accessibility tree | `browser_get_content(format='axtree', selector?)` | `browser_get_state()` |
 | Mock network response | `browser_mock_network(pattern, body)` | `browser_intercept(pattern, action='mock')` |
 | Clear all mocks | `browser_clear_mocks()` | `browser_clear_intercepts()` |
 | Handle JS dialog | `browser_dialog(action='accept')` | manual `page.on('dialog')` |
 | Upload file | `browser_upload(selector, filePath)` | `browser_fill_form(typeAware=true)` for file inputs |
-| Click Nth match | `browser_click_nth(selector, index)` | `browser_click(selector)` with specific selector |
+| Click Nth match | `browser_click(selector, nth=index)` | `browser_click(selector)` with specific selector |
 | Highlight element | `browser_highlight(selector, color?)` | `browser_screenshot()` without highlight |
-| Wait for content change | `browser_wait_for_change(selector)` | `browser_wait(ms)` + poll |
+| Wait for content change | `browser_wait(condition='change', target=selector)` | `browser_wait(condition='time', ms)` + poll |
 | Emulate conditions | `browser_emulate(networkProfile, cpuThrottlingRate, ...)` | — |
 | Resize viewport size | `browser_resize_page(width, height)` | — |
 | Start trace recording | `browser_start_trace(screenshots, snapshots)` | — |
@@ -107,14 +107,15 @@ This browser agent works best paired with other MCPs for full power:
 
 ## Wait Strategy Guide
 
-| Situation | Tool |
+| Situation | Call |
 |-----------|------|
-| Standard page load | `browser_wait_for_load()` |
-| SPA / AJAX-heavy page | `browser_wait_until_stable()` |
-| Page has WebSocket / long-polling | `browser_wait_for_load()` — networkidle will hang |
-| Waiting for a specific element | `browser_wait_for_selector(selector)` |
-| Waiting for URL change | `browser_wait_for_url(pattern)` |
-| After click that navigates | `browser_wait_for_navigation(urlPattern)` or `browser_wait_for_navigation(selector)` |
+| Standard page load | `browser_wait(condition='load')` |
+| SPA / AJAX-heavy page | `browser_wait(condition='stable')` |
+| Page has WebSocket / long-polling | `browser_wait(condition='load')` — networkidle will hang |
+| Waiting for a specific element | `browser_wait(condition='selector', target=selector)` |
+| Waiting for URL change | `browser_wait(condition='url', target=pattern)` |
+| After click that navigates | `browser_wait(condition='navigation', target=urlPattern)` or `target=selector` |
+| Content updates in place | `browser_wait(condition='change', target=selector)` |
 
 ## browser_evaluate Notes
 
@@ -234,15 +235,15 @@ Screenshots consume significant tokens. Use them only when the AX tree is not en
 
 In highly stylized cases where DOM semantic extraction fails entirely, call `browser_get_state(screenshot=true, mark_elements=true)`. This uses **Set-of-Mark (SoM)** prompting, drawing highly visible numbered badges over all interactable elements on the screenshot, allowing a Vision LLM to locate elements visually.
 
-`browser_observe` returns only interactable elements with `ref` numbers — no headings, no text blocks, no AX tree, no image. Use `browser_click_ref(ref)` to act on them. The `browser_click_ref` tool is **closed-loop**: it will automatically wait for `networkidle` after clicking and report back if the action caused a navigation or mutated the page (SOTA Action Verification).
+`browser_observe` returns only interactable elements with `ref` numbers — no headings, no text blocks, no AX tree, no image. Use `browser_click(ref=ref)` to act on them. The ref path is **closed-loop**: it will automatically wait for `networkidle` after clicking and report back if the action caused a navigation or mutated the page (SOTA Action Verification).
 
 ## Planner-Validator Loop
 
 After any action that has a verifiable outcome, use `browser_assert` before continuing:
 
 ```
-browser_click_text("Submit")
-→ browser_assert(condition="[role='alert']", expected="Success")
+browser_click(text="Submit")
+→ browser_assert(type="text", target="[role='alert']", expected="Success")
   ✓ passed → continue
   ✗ failed → re-plan based on what's actually on the page
 ```
@@ -279,22 +280,22 @@ browser_generate_playwright_test(testName="checkout_flow", outputPath="/tmp/test
 
 1. **Sense before act** — call `browser_get_state()` before an unfamiliar page. Add `screenshot=true` only when elements may be hidden from AX tree (canvas, iframes, shadow DOM).
 2. **Default no-screenshot** — `browser_observe()` and `browser_get_state()` (no arg) cost no image tokens. Reserve `screenshot=true` / `browser_screenshot()` for when visual context is genuinely needed.
-3. **Cap diagnostics output** — when calling `browser_console_messages`, `browser_network_requests`, or `browser_get_text(all=true)` on busy pages, pass `maxLines` (e.g. 200) to control token cost.
+3. **Cap diagnostics output** — when calling `browser_console_messages`, `browser_network_requests`, or `browser_get_content(format='text', all=true)` on busy pages, pass `maxLines` (e.g. 200) to control token cost.
 4. **Never zero-delay type** — minimum `delay=50`, target `delay=120` for public sites.
 5. **Selector priority**: `#id` → `[data-testid]` → `[role]`/text → ref number → `.class` → `x,y` coordinates. Smart retry auto-fallbacks on failure.
-6. **After navigation** — call `browser_wait_for_navigation()` or `browser_wait_for_selector` before next interaction.
+6. **After navigation** — call `browser_wait(condition='navigation')` or `browser_wait(condition='selector', target=...)` before next interaction.
 7. **On blocked elements** — call `browser_dismiss_popups()` first, then coordinate fallback, then `browser_evaluate`.
-8. **Sites with WebSocket/SSE** — use `browser_wait_for_load()` not `browser_wait_until_stable()` or you will hang.
+8. **Sites with WebSocket/SSE** — use `browser_wait(condition='load')` not `browser_wait(condition='stable')` or you will hang.
 9. **On persistent failures** — call `browser_health()`. If `contextAlive=false` or `pageResponsive=false`, the next tool call will auto-recover; otherwise investigate the active URL and recent `browser_console_messages(type='error')`.
 10. **Structured forms** — prefer `browser_fill_form(..., typeAware=true)` over per-field `browser_type` when the form has mixed input types (date/number/email/tel/url/select/checkbox/radio/file/contenteditable).
 11. **Quiz automation** — use `browser_batch_answer_quiz()` for entire exams. Use `browser_select_by_index()` for individual questions. Avoid text-based selection for quiz options.
 12. **API-first extraction** — when available, use `browser_intercept_api()` to capture structured data directly instead of DOM scraping.
-13. **Assert after actions** — use `browser_assert_visible`, `browser_assert_text`, or `browser_assert_url` after actions with verifiable outcomes. Assertions never throw — they return PASS/FAIL.
-14. **Read content as markdown** — prefer `browser_get_page_markdown()` over `browser_get_text()` for comprehension tasks. It returns structured headings, lists, and tables.
+13. **Assert after actions** — use `browser_assert` with `type: 'visible'`, `'text'`, or `'url'` after actions with verifiable outcomes. Assertions never throw — they return PASS/FAIL.
+14. **Read content as markdown** — prefer `browser_get_content(format='markdown')` over `browser_get_content(format='text')` for comprehension tasks. It returns structured headings, lists, and tables.
 15. **Mock for testing** — use `browser_mock_network()` to isolate frontend from backend. Always `browser_clear_mocks()` when done.
 16. **Dialog before trigger** — call `browser_dialog()` BEFORE the action that opens the dialog. Handler persists for one dialog only.
-17. **Click nth for lists** — use `browser_click_nth(selector, index)` when `browser_click()` throws "strict mode violation" due to multiple matches.
-18. **Wait for change** — use `browser_wait_for_change(selector)` after SPA actions that update content in-place, instead of arbitrary `browser_wait()`.
+17. **Click nth for lists** — use `browser_click(selector, nth=index)` when `browser_click()` throws "strict mode violation" due to multiple matches.
+18. **Wait for change** — use `browser_wait(condition='change', target=selector)` after SPA actions that update content in-place, instead of an arbitrary fixed delay.
 
 ## API Capture Workflow
 
@@ -343,22 +344,23 @@ Load these only when needed:
 Assertions verify outcomes without breaking flow. They return `[PASS]` or `[FAIL]` — never throw.
 
 ```
-browser_click_text("Submit")
-→ browser_assert_visible("[role='alert']")
+browser_click(text="Submit")
+→ browser_assert(type="visible", target="[role='alert']")
   ✓ [PASS] → continue
   ✗ [FAIL] → re-plan based on what's actually on the page
 ```
 
 ### Types:
-- `browser_assert_visible(selector)` — element exists and is visible
-- `browser_assert_text(selector, expected)` — element contains substring
-- `browser_assert_url(pattern)` — URL contains pattern
+- `browser_assert(type='element'|'visible', target=selector)` — element exists or is visible
+- `browser_assert(type='text', target=selector, expected=...)` — element contains substring
+- `browser_assert(type='url', target=pattern)` — URL contains pattern
+- `browser_assert(type='js', condition=...)` — expression is truthy (`HELA_BROWSER_ALLOW_EVAL=true` required)
 
 ### Use after every action with a verifiable outcome:
 ```
 browser_fill_form({"#email": "test@example.com"}, submit=true)
-→ browser_assert_url("/dashboard")
-→ browser_assert_text(".welcome", "Hello")
+→ browser_assert(type="url", target="/dashboard")
+→ browser_assert(type="text", target=".welcome", expected="Hello")
 ```
 
 ## Perception Tools
@@ -367,17 +369,18 @@ Read page content as structured data instead of raw DOM.
 
 | Tool | Returns | Best For |
 |------|---------|----------|
-| `browser_get_page_markdown(selector?)` | Markdown with headings, lists, tables, links | Reading article content, product info |
-| `browser_get_accessibility_tree(selector?)` | YAML-like roles/names/states | Understanding component structure |
+| `browser_get_content(format='markdown', selector?)` | Markdown with headings, lists, tables, links | Reading article content, product info |
+| `browser_get_content(format='axtree', selector?)` | YAML-like roles/names/states | Understanding component structure |
+| `browser_get_content(format='text'|'visible'|'html', selector?)` | Raw, visible-only, or HTML content | Extraction and debugging |
 
 ### When to use:
-- Reading page content for comprehension → `browser_get_page_markdown()`
-- Understanding what elements are available → `browser_get_accessibility_tree()`
+- Reading page content for comprehension → `browser_get_content(format='markdown')`
+- Understanding what elements are available → `browser_get_content(format='axtree')`
 - Scoping to a section → pass CSS selector
 
 ### Example:
 ```js
-browser_get_page_markdown("article.post")
+browser_get_content(format="markdown", selector="article.post")
 // Returns:
 // # Title of Article
 // ## Section 1
@@ -453,9 +456,9 @@ browser_download_click(ref=42, savePath="/home/agent/workspace/export.csv")
 Click the Nth element when multiple elements match a selector.
 
 ```
-browser_click_nth(".product-card", 0)   // first product
-browser_click_nth(".product-card", 2)   // third product
-browser_click_nth("button", -1)         // last button
+browser_click(".product-card", nth=0)   // first product
+browser_click(".product-card", nth=2)   // third product
+browser_click(".product-card", nth=3)   // fourth product
 ```
 
 ### Use when:
@@ -483,8 +486,8 @@ Wait for SPA content to update after an action.
 
 ```
 browser_click("#calculate")
-browser_wait_for_change("#results", timeout=5000)
-browser_get_text("#results")  // now contains updated data
+browser_wait(condition="change", target="#results", timeoutMs=5000)
+browser_get_content(format="text", selector="#results")  // now contains updated data
 ```
 
 ### When to use:

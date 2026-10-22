@@ -4,7 +4,7 @@
 1. `#id` — fastest, most stable
 2. `[data-testid="..."]` — standard in React/Vue apps
 3. `[role="button"]`, `button:has-text("Login")` — semantic, survives refactors
-4. `ref` (via `browser_click_ref`) — highly reliable coordinate click, natively pierces cross-origin iframes
+4. `ref` (via `browser_click(ref=...)`) — highly reliable coordinate click, natively pierces cross-origin iframes
 5. `.class-name` — last resort; styling-coupled, fragile
 
 ## AX Tree Usage
@@ -19,13 +19,13 @@ Prefer AX tree targeting over raw HTML selectors — it mirrors how assistive te
 
 **Element not yet in DOM:**
 ```
-browser_wait_for_selector(selector, timeout=5000)
+browser_wait(condition="selector", target=selector, timeoutMs=5000)
 ```
 
 **Action triggers a page load:**
 ```
 browser_click(selector)
-browser_wait_for_selector(new_content_selector)
+browser_wait(condition="selector", target=new_content_selector)
 browser_get_state()   // re-sense after DOM change
 ```
 
@@ -34,10 +34,10 @@ browser_get_state()   // re-sense after DOM change
 // Do NOT try to use standard selectors on cross-origin iframes!
 // browser_observe / browser_get_state automatically extract elements inside iframes
 // and map their absolute screen coordinates. Just use click_ref:
-browser_click_ref(ref=42)
+browser_click(ref=42)
 ```
 
 ## Pre-Interaction Checklist
-- Element visible in viewport? → `browser_scroll_to(selector)` if not
+- Element visible in viewport? → `browser_scroll(mode="to", selector=selector)` if not
 - Element enabled? → check `axTree` state property
 - Post-interaction change expected? → wait for it before continuing

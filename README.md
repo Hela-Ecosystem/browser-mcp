@@ -3,11 +3,11 @@
 
 > **Part of the [HeLa MCP Ecosystem](https://github.com/1999AZZAR/hela-mcp-ecosystem)** — This server is **HeLa Cytosol (`hela-cytosol`)** — the *Browser Automation* component of the HeLa cellular architecture. See the [ecosystem docs](https://github.com/1999AZZAR/hela-mcp-ecosystem) for profiles, workflows, and multi-client setup.
 
-A modular, production-ready browser automation agent implemented as a Model Context Protocol (MCP) server. Powered by Playwright, it provides **88 tools** for human-like web interaction, state analysis, automated navigation, and network-level control.
+A modular, production-ready browser automation agent implemented as a Model Context Protocol (MCP) server. Powered by Playwright, it provides **73 tools** for human-like web interaction, state analysis, automated navigation, and network-level control.
 
 ## Features
 
-- **Semantic Interaction**: Click elements by text (`browser_click_text`) and fill entire forms (`browser_fill_form`) with single commands.
+- **Semantic Interaction**: Click by text, selector, `ref`, or nth match with `browser_click`, and fill entire forms (`browser_fill_form`) with single commands.
 - **Multi-Tab Management**: Handle multiple sites simultaneously with tab list, switch, and creation tools.
 - **Resilient Navigation**: Automatic retry with configurable attempts and backoff on network failures.
 - **Request Interception**: Block, mock, or modify requests at the network level — stub APIs, strip ads, inject auth headers.
@@ -16,19 +16,19 @@ A modular, production-ready browser automation agent implemented as a Model Cont
 - **Crash Recovery**: Browser state is automatically persisted to disk. If the browser process dies, tabs and intercept rules are restored on the next tool call — no data loss.
 - **Parallel Agents**: Run independent named pages within a single browser context. Create, switch, and remove agents to handle multi-page workflows without interference.
 - **PDF Export**: Save pages to disk as PDF with a custom output path and accurate file size reporting.
-- **Smart Wait Strategy**: `browser_wait_for_load` for sites with WebSocket/SSE connections; `browser_wait_until_stable` for AJAX-heavy SPAs; `browser_wait_for_navigation` for post-action URL/selector waits.
+- **Smart Wait Strategy**: `browser_wait` supports fixed delays, selectors, URLs, load events, network-idle, attribute change, and post-action navigation waits.
 - **Stealth and Evasion**: Anti-detection behavioral profiles (`stealth` vs `speed`), realistic user-agent spoofing, human-like mouse jitter and typing delay.
 - **Robust State Capture**: Extracts semantic page data including Accessibility Trees (AX Tree), interactive elements, and structural headings. **Natively pierces cross-origin iframes (like Stripe/CAPTCHA)** to provide unified DOM extraction.
 - **Vision & Set-of-Mark (SoM)**: Supports `mark_elements=true` to draw numbered bounding boxes over interactable elements in screenshots, bypassing semantic limitations of Canvas/ShadowDOM.
-- **Data Extraction**: Table-to-JSON extraction, high-fidelity PDF/HTML capture, and visible-only text extraction.
+- **Data Extraction**: Table-to-JSON extraction, high-fidelity PDF/HTML capture, and `browser_get_content` for Markdown, text, visible text, HTML, or AX trees.
 - **CAPTCHA Management**: Automated detection and assisted resolution for reCAPTCHA, hCaptcha, and common challenge pages.
 - **API Interception & Capture**: Capture XHR/fetch responses as structured JSON — extract quiz data without DOM scraping.
 - **Batch Automation**: Answer entire quizzes in one tool call; batch form filling with index-based selection.
 - **OCR**: Extract text from code screenshots and images via Tesseract.js with preprocessing.
 - **Macro Recording & Replay**: Record workflows once, replay them with different parameters.
 - **Parallel Execution**: Run actions on multiple named pages concurrently.
-- **Assertions**: Verify outcomes without breaking flow — `browser_assert_visible`, `browser_assert_text`, `browser_assert_url` return PASS/FAIL.
-- **Perception Tools**: Read page content as structured Markdown or accessibility tree — no screenshots needed.
+- **Assertions**: Verify outcomes without breaking flow — `browser_assert` checks elements, visibility, text, URLs, or JavaScript expressions and returns PASS/FAIL.
+- **Perception Tools**: Read page content as structured Markdown, text, HTML, or accessibility tree with `browser_get_content` — no screenshots needed.
 - **Network Mocking**: Mock API responses for frontend testing without touching the backend.
 - **SSRF Protection**: Blocks navigation to `file://`, `javascript://`, private IPs, DNS rebinding, and cloud metadata endpoints.
 
@@ -47,12 +47,7 @@ See the General Browser Agent in action with Gemini CLI: [Watch on YouTube](http
 | `browser_list_tabs` | List all open tabs and their active status |
 | `browser_switch_tab` | Switch active tab by index |
 | `browser_back` / `browser_forward` / `browser_reload` | Standard history control |
-| `browser_wait` | Wait for a fixed number of milliseconds |
-| `browser_wait_for_selector` | Wait until an element appears in the DOM |
-| `browser_wait_for_url` | Wait until the URL matches a pattern (substring or regex) |
-| `browser_wait_for_navigation` | Smart wait for URL change/selector after an action (replaces fixed waits) |
-| `browser_wait_until_stable` | Wait for networkidle — use for AJAX/SPA pages |
-| `browser_wait_for_load` | Wait for the `load` or `domcontentloaded` event — use for WebSocket/SSE pages |
+| `browser_wait` | Wait for a delay, selector, URL, load state, network-idle, attribute change, or navigation (`condition`) |
 
 ### Named Agents / Parallelism
 
@@ -69,29 +64,26 @@ Named agents are independent pages within the same browser. Use them to parallel
 
 **Wait strategy guide:**
 
-| Situation | Tool |
+| Situation | Call |
 |-----------|------|
-| Standard page navigation | `browser_wait_for_load()` |
-| SPA / AJAX-heavy content | `browser_wait_until_stable()` |
-| Page with WebSocket or long-polling | `browser_wait_for_load()` — networkidle will hang |
-| Specific element expected | `browser_wait_for_selector(selector)` |
-| URL change after action | `browser_wait_for_url(pattern)` |
+| Standard page navigation | `browser_wait({ condition: 'load' })` |
+| SPA / AJAX-heavy content | `browser_wait({ condition: 'stable' })` |
+| Page with WebSocket or long-polling | `browser_wait({ condition: 'load' })` — networkidle will hang |
+| Specific element expected | `browser_wait({ condition: 'selector', target })` |
+| URL change after action | `browser_wait({ condition: 'url', target })` or `condition: 'navigation'` |
+| Text or attribute change | `browser_wait({ condition: 'change', target, attribute })` |
 
 ### Interaction
 
 | Tool | Description |
 |------|-------------|
-| `browser_click_text` | Click element by visible text (smart button/link detection) |
-| `browser_click_nth` | Click the nth element matching a CSS selector (0-based index) |
+| `browser_click` | Click by selector, text, `ref`, `nth`, or `x`/`y`; supports button, click count, and delay |
 | `browser_fill_form` | Populate multiple fields at once from a `{selector: value}` object |
-| `browser_click` | Click by selector or `x, y` coordinates — includes smart retry with fallback selectors |
-| `browser_double_click` / `browser_right_click` | Pointer events |
 | `browser_hover` | Hover over an element or coordinates |
 | `browser_drag` | Drag source element to target |
 | `browser_upload` | Upload a file to an `<input type="file">` element |
 | `browser_download_click` | Click an element (by ref) that triggers an OS file download, bypass the dialog, and save locally |
-| `browser_scroll` / `browser_scroll_to` | Scroll by direction or to a target |
-| `browser_smart_scroll` | Incremental scroll to trigger lazy-loaded content |
+| `browser_scroll` | Scroll by direction, to a selector/coordinate, or incrementally to trigger lazy loading (`mode`) |
 
 ### Assertions
 
@@ -99,17 +91,18 @@ Verify outcomes without breaking flow — each returns `[PASS]` or `[FAIL]`:
 
 | Tool | Description |
 |------|-------------|
-| `browser_assert_visible` | Assert that a selector is visible within timeout |
-| `browser_assert_text` | Assert that a selector contains specific text |
-| `browser_assert_url` | Assert that the URL matches a pattern (substring or regex) |
+| `browser_assert` | Assert an element, visibility, text, URL, or JS condition (`type`) |
 
 **Example:**
 ```
-browser_assert_visible("selector=button#submit", timeout=5000)
-→ [PASS] Button '#submit' is visible
+browser_assert({ type: "visible", target: "button#submit", timeoutMs: 5000 })
+→ [PASS] button#submit is visible
 
-browser_assert_url("pattern=/dashboard")
-→ [PASS] URL contains '/dashboard'
+browser_assert({ type: "text", target: "#output", expected: "Success" })
+→ [PASS] Found "Success" in #output
+
+browser_assert({ type: "url", target: "/dashboard" })
+→ [PASS] URL contains "/dashboard"
 ```
 
 ### Forms & Input
@@ -131,12 +124,10 @@ browser_assert_url("pattern=/dashboard")
 |------|-------------|
 | `browser_get_state` | Unified page snapshot: URL, title, AX tree, interactive elements, screenshot. Use `mark_elements=true` for Set-of-Mark visual bounding boxes. |
 | `browser_observe` | **Low-token alternative to `browser_get_state`** — returns only interactable elements with `ref` numbers, no screenshot. Use for pre-action planning. |
-| `browser_click_ref` | Click an element by its `ref` number. Includes closed-loop Action Verification (auto-awaits `networkidle` and reports navigation status). |
+| `browser_click` | Pass `ref` to click an element by its `ref` number. Includes closed-loop Action Verification (auto-awaits `networkidle` and reports navigation status). |
 | `browser_state_diff` | Compare last two AX snapshots: URL/title changes, new/removed headings, element shifts, popups, captcha |
 | `browser_screenshot` | Take a screenshot (supports `mark_elements=true`) |
-| `browser_get_text` | Read text from one or all matching elements |
-| `browser_get_visible_text` | Extract only visible text (skips hidden, display:none, zero-size elements) |
-| `browser_get_html` | Get full page or element HTML |
+| `browser_get_content` | Read content as `markdown`, `text`, `visible`, `html`, or `axtree`, scoped by `selector` |
 | `browser_extract_table` | Convert an HTML table to structured JSON |
 | `browser_get_cookies` | Get all cookies for the active page |
 | `browser_evaluate` | Execute JavaScript in the page context (supports `return`, `await`, and `args` injection) |
@@ -144,8 +135,6 @@ browser_assert_url("pattern=/dashboard")
 | `browser_console_messages` | Return captured browser console messages and JS errors (last 100). Filter by `type`. Pass `clear: true` to flush. |
 | `browser_network_requests` | Return captured network requests with status and timing (last 100). Filter by URL substring or `statusMin`. |
 | `browser_health` | Check browser health: context alive, page responsive, latency, active URL. Use to diagnose crashes or unresponsive pages. |
-| `browser_get_page_markdown` | Read page content as structured Markdown — headings, paragraphs, links, images. No screenshot needed. |
-| `browser_get_accessibility_tree` | Get the full accessibility tree (AX Tree) without a screenshot. Lightweight perception tool for structured data. |
 
 **`browser_evaluate` usage:**
 ```js
@@ -227,7 +216,7 @@ browser_clear_mocks()
 | `browser_switch_to_new_tab` | Detect and switch to a newly opened tab/popup |
 | `browser_dialog` | Handle JavaScript `alert`, `confirm`, `prompt` dialogs (auto-dismissed by default) |
 | `browser_highlight` | Highlight element(s) by selector — visual debug overlay |
-| `browser_wait_for_change` | Wait for page title, URL, or element count to change (SPA detection) |
+| `browser_wait` | Use `condition: 'change'` to wait for a text or attribute change (SPA detection) |
 | `browser_close` | Terminate the browser session and clear all state |
 
 ### Batch Automation
@@ -380,7 +369,7 @@ For repetitive or well-understood pages, skip the heavy `browser_get_state` scre
 1. browser_observe()           # Returns elements with ref numbers, no screenshot
    → { elements: [{ ref: 1, tag: "BUTTON", text: "Sign In" }, ...] }
 
-2. browser_click_ref(ref=1)    # Click by ref — no re-snapshot needed
+2. browser_click(ref=1)        # Click by ref — no re-snapshot needed
    → "Clicked ref 1 (BUTTON "Sign In") at (320, 240)."
 ```
 
@@ -402,7 +391,7 @@ The agent is designed for closed-loop automation with a **hybrid screenshot stra
 Unfamiliar page      → browser_get_state()               # AX tree + elements, no image
 Planning an action   → browser_observe()                  # interactable elements + refs only
 Visual verification  → browser_get_state(screenshot=true) # full state + screenshot
-Act by ref           → browser_click_ref(ref)             # stable, no re-snapshot needed
+Act by ref           → browser_click(ref)                 # stable, no re-snapshot needed
 After action         → browser_state_diff()               # diff only, no image
 Debug failures       → browser_console_messages()         # JS errors
                        browser_network_requests()         # failed API calls

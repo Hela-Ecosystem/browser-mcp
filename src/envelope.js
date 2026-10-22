@@ -39,6 +39,7 @@ const READ_ONLY_PREFIXES = [
 const READ_ONLY_NAMES = new Set([
   'browser_generate_playwright_test',
   'browser_record_macro',
+  'browser_wait',
 ]);
 
 // File-producing tools.

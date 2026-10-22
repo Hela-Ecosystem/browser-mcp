@@ -122,26 +122,31 @@ const TOOLS = [
         },
     },
     {
-        name: 'browser_wait_until_stable',
-        description: 'Wait for the page to reach a stable state (networkidle).',
-        inputSchema: {
-            type: 'object',
-            properties: { timeout: { type: 'number', default: 30000 } },
-        },
-    },
-    {
-        name: 'browser_wait_for_load',
-        description: 'Wait for the page load event. Use instead of browser_wait_until_stable for pages with persistent WebSocket connections or polling that never reach networkidle.',
+        name: 'browser_wait',
+        description: 'Wait for time, selector, URL, page load, network idle, DOM change, or SPA navigation. Consolidates the former wait_until_stable, wait_for_load, wait_for_selector, wait_for_url, wait_for_navigation, and wait_for_change tools.',
+        annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
             properties: {
+                condition: {
+                    type: 'string',
+                    enum: ['time', 'selector', 'url', 'load', 'stable', 'change', 'navigation'],
+                    default: 'time',
+                    description: 'What to wait for. navigation waits for a URL change/pattern or selector after an action.',
+                },
+                target: {
+                    type: 'string',
+                    description: 'Selector for selector/change, URL substring or regex: pattern for url/navigation.',
+                },
+                timeoutMs: { type: 'number', description: 'Maximum wait time in milliseconds.' },
+                ms: { type: 'number', description: 'Milliseconds for condition=time (alias for timeoutMs).' },
                 state: {
                     type: 'string',
                     enum: ['load', 'domcontentloaded'],
                     default: 'load',
-                    description: '"load" waits for full page load including subresources. "domcontentloaded" fires earlier, once HTML is parsed.',
+                    description: 'Page load state for condition=load.',
                 },
-                timeout: { type: 'number', default: 30000 },
+                attribute: { type: 'string', description: 'Attribute to watch for condition=change (default: textContent).' },
             },
         },
     },
@@ -160,64 +165,26 @@ const TOOLS = [
         description: 'Reload the current page.',
         inputSchema: { type: 'object', properties: {} },
     },
-    {
-        name: 'browser_wait',
-        description: 'Wait for a specified number of milliseconds.',
-        inputSchema: {
-            type: 'object',
-            properties: { ms: { type: 'number' } },
-            required: ['ms'],
-        },
-    },
-    {
-        name: 'browser_wait_for_selector',
-        description: 'Wait for an element to appear.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string' },
-                timeout: { type: 'number', default: 10000 },
-            },
-            required: ['selector'],
-        },
-    },
-    {
-        name: 'browser_wait_for_url',
-        description: 'Wait for the URL to match a pattern.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                pattern: { type: 'string', description: 'Substring or regex (prefixed with regex:)' },
-                timeout: { type: 'number', default: 15000 },
-            },
-            required: ['pattern'],
-        },
-    },
 
     // ── Interaction ───────────────────────────────────────────────────────────
     {
         name: 'browser_click',
-        description: 'Click an element.',
+        description: 'Click by ref, visible text, CSS selector, or x/y coordinates. Supports nth/index match, left/right/middle button, single/double click, and smart selector fallbacks. Consolidates the former click_text, click_nth, click_ref, double_click, and right_click tools.',
         inputSchema: {
             type: 'object',
             properties: {
-                selector: { type: 'string' },
+                selector: { type: 'string', description: 'CSS selector. Supports smart retry fallbacks.' },
+                text: { type: 'string', description: 'Visible text to match.' },
+                ref: { type: 'number', description: '1-based ref from browser_observe or browser_get_state.' },
+                nth: { type: 'number', description: '0-based match index for selector or text.' },
+                index: { type: 'number', description: 'Alias for nth.' },
                 x: { type: 'number' },
                 y: { type: 'number' },
-                delay: { type: 'number', description: 'Delay between mousedown and mouseup (ms)' }
+                button: { type: 'string', enum: ['left', 'right', 'middle'], default: 'left' },
+                count: { type: 'number', description: 'Click count; use 2 for a double click.', default: 1 },
+                type: { type: 'string', enum: ['button', 'link', 'any'], default: 'any', description: 'Element filter for text clicks.' },
+                delay: { type: 'number', description: 'Delay between mousedown and mouseup (ms).' },
             },
-        },
-    },
-    {
-        name: 'browser_click_text',
-        description: 'Click an element containing specific text.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                text: { type: 'string' },
-                type: { type: 'string', enum: ['button', 'link', 'any'], default: 'any' },
-            },
-            required: ['text'],
         },
     },
     {
@@ -231,30 +198,6 @@ const TOOLS = [
                 typeAware: { type: 'boolean', default: false, description: 'Detect input type and format values automatically.' },
             },
             required: ['data'],
-        },
-    },
-    {
-        name: 'browser_double_click',
-        description: 'Double-click an element.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string' },
-                x: { type: 'number' },
-                y: { type: 'number' },
-            },
-        },
-    },
-    {
-        name: 'browser_right_click',
-        description: 'Right-click an element.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string' },
-                x: { type: 'number' },
-                y: { type: 'number' },
-            },
         },
     },
     {
@@ -283,35 +226,22 @@ const TOOLS = [
     },
     {
         name: 'browser_scroll',
-        description: 'Scroll the page.',
+        description: 'Scroll by direction and amount, to a selector or coordinates, or incrementally to trigger lazy loading. Consolidates the former scroll_to and smart_scroll tools.',
         inputSchema: {
             type: 'object',
             properties: {
+                mode: {
+                    type: 'string',
+                    enum: ['by', 'to', 'lazy'],
+                    description: 'Scroll mode. Inferred from selector/x/y (to) or steps (lazy); defaults to by.',
+                },
                 direction: { type: 'string', enum: ['up', 'down'], default: 'down' },
-                amount: { type: 'number' },
-            },
-        },
-    },
-    {
-        name: 'browser_scroll_to',
-        description: 'Scroll to an element or coordinates.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string' },
+                amount: { type: 'number', description: 'Pixels for mode=by (default 500).' },
+                selector: { type: 'string', description: 'Element target for mode=to.' },
                 x: { type: 'number' },
                 y: { type: 'number' },
-            },
-        },
-    },
-    {
-        name: 'browser_smart_scroll',
-        description: 'Incremental scroll to trigger lazy loading.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                steps: { type: 'number', default: 5 },
-                delayMs: { type: 'number', default: 800 },
+                steps: { type: 'number', default: 5, description: 'Steps for mode=lazy.' },
+                delayMs: { type: 'number', default: 800, description: 'Delay between lazy scroll steps.' },
             },
         },
     },
@@ -401,27 +331,22 @@ const TOOLS = [
         },
     },
     {
-        name: 'browser_get_text',
-        description: 'Read text from element(s). When all=true, returns up to maxLines results (default 100).',
+        name: 'browser_get_content',
+        description: 'Restricted to browser or JavaScript-rendered content; prefer hela-enzyme extract_content for static pages. Extract page content as markdown, text, visible text, HTML, or accessibility tree. Consolidates the former get_text, get_html, get_visible_text, get_page_markdown, and get_accessibility_tree tools.',
         annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
             properties: {
-                selector: { type: 'string' },
-                all: { type: 'boolean', default: false },
-                maxLines: { type: 'number', description: 'Max number of elements to return when all=true. Default 100.' },
-            },
-            required: ['selector'],
-        },
-    },
-    {
-        name: 'browser_get_html',
-        description: 'Get the full HTML content of the page or a specific element.',
-        annotations: { readOnlyHint: true },
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'Optional selector to get innerHTML of.' },
+                format: {
+                    type: 'string',
+                    enum: ['markdown', 'text', 'visible', 'html', 'axtree'],
+                    default: 'markdown',
+                    description: 'Output format.',
+                },
+                selector: { type: 'string', description: 'CSS selector to scope extraction. Required for format=text.' },
+                all: { type: 'boolean', default: false, description: 'For format=text: read all matching elements.' },
+                maxLines: { type: 'number', description: 'For format=text: max elements returned when all=true. Default 100.' },
+                maxLength: { type: 'number', description: 'For format=markdown/axtree: max output chars. Default 5000.' },
             },
         },
     },
@@ -785,18 +710,6 @@ const TOOLS = [
 
     // ── Phase 1 Enhancements ─────────────────────────────────────────────────
     {
-        name: 'browser_wait_for_navigation',
-        description: 'Smart wait after an action: waits for URL to change/contain a pattern, or for a specific selector to appear. Use after clicks that trigger navigation instead of fixed browser_wait.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                urlPattern: { type: 'string', description: 'Wait until URL contains this string. Supports regex: prefix.' },
-                selector: { type: 'string', description: 'Wait for this CSS selector to appear on the page.' },
-                timeout: { type: 'number', default: 15000, description: 'Max wait time in ms.' },
-            },
-        },
-    },
-    {
         name: 'browser_select_by_index',
         description: 'Select a radio button or checkbox by its 0-based index within a group. Use for quiz questions or radio groups where text matching is unreliable.',
         inputSchema: {
@@ -809,17 +722,6 @@ const TOOLS = [
             required: ['selector'],
         },
     },
-    {
-        name: 'browser_get_visible_text',
-        description: 'Extract clean text from only visible elements on the page. Skips hidden, display:none, and zero-size elements. Returns structured text without DOM noise.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'Optional CSS selector to scope extraction (default: main content area).' },
-            },
-        },
-    },
-
     // ── Helpers ───────────────────────────────────────────────────────────────
     {
         name: 'browser_dismiss_popups',
@@ -830,20 +732,9 @@ const TOOLS = [
     // ── Observe / Ref-click ───────────────────────────────────────────────────
     {
         name: 'browser_observe',
-        description: 'Return only interactable elements (buttons, inputs, links, selects) without a screenshot. Each element gets a stable `ref` number. Use before planning an action to enumerate available targets with minimal token cost — then act with browser_click_ref or browser_type.',
+        description: 'Return only interactable elements (buttons, inputs, links, selects) without a screenshot. Each element gets a stable `ref` number. Use before planning an action to enumerate available targets with minimal token cost — then act with browser_click(ref=...) or browser_type.',
         annotations: { readOnlyHint: true },
         inputSchema: { type: 'object', properties: {} },
-    },
-    {
-        name: 'browser_click_ref',
-        description: 'Click an element by its `ref` number from the last browser_observe or browser_get_state call. More reliable than selectors for dynamic pages — no re-snapshotting needed.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                ref: { type: 'number', description: '1-based ref index from the last observe/state call.' },
-            },
-            required: ['ref'],
-        },
     },
 
     // ── CDP Diagnostics ───────────────────────────────────────────────────────
@@ -929,25 +820,25 @@ const TOOLS = [
     // ── Planner-Validator ─────────────────────────────────────────────────────
     {
         name: 'browser_assert',
-        description: 'Validate a condition on the current page. On failure, returns what is actually present to help re-plan. Use after actions to verify outcomes before continuing. Note: conditionType="js" requires HELA_BROWSER_ALLOW_EVAL=true (R3 privilege).',
+        description: 'Validate page state: element existence/text, visibility, URL, or gated JavaScript. Returns PASS/FAIL without breaking the flow. Consolidates the former assert_visible, assert_text, and assert_url tools. type=js requires HELA_BROWSER_ALLOW_EVAL=true.',
+        annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
             properties: {
-                condition: {
+                type: {
                     type: 'string',
-                    description: 'What to check — either a CSS selector that must exist, a URL pattern to match, or a JS expression returning a boolean.',
+                    enum: ['element', 'visible', 'text', 'url', 'js'],
+                    default: 'element',
+                    description: 'Assertion type.',
                 },
-                conditionType: {
+                target: {
                     type: 'string',
-                    enum: ['selector', 'url', 'js'],
-                    default: 'selector',
+                    description: 'CSS selector for element/visible/text, URL pattern for url, or JS expression for js.',
                 },
-                expected: {
-                    type: 'string',
-                    description: 'For selector: optional text the element must contain. For url: pattern to match. For js: ignored (expression must return truthy).',
-                },
+                expected: { type: 'string', description: 'Expected text for type=text or optional text for type=element.' },
+                condition: { type: 'string', description: 'Legacy alias for target.' },
+                conditionType: { type: 'string', enum: ['selector', 'url', 'js'], description: 'Legacy alias for type.' },
             },
-            required: ['condition'],
         },
     },
 
@@ -957,68 +848,6 @@ const TOOLS = [
         description: 'Return statistics about the action selector cache (hit count, entries, stale entries). Read-only.',
         annotations: { readOnlyHint: true },
         inputSchema: { type: 'object', properties: {} },
-    },
-
-    // ── Assertions (never throw — return PASS/FAIL) ──────────────────────────
-    {
-        name: 'browser_assert_visible',
-        description: 'Check if an element is visible on the page. Returns [PASS]/[FAIL] — never throws. Use for verification without breaking flow.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'CSS selector to check' },
-            },
-            required: ['selector'],
-        },
-    },
-    {
-        name: 'browser_assert_text',
-        description: 'Check if an element contains expected text (substring match). Returns [PASS]/[FAIL] with context — never throws.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'CSS selector' },
-                expected: { type: 'string', description: 'Expected text substring' },
-            },
-            required: ['selector', 'expected'],
-        },
-    },
-    {
-        name: 'browser_assert_url',
-        description: 'Check if current URL contains a pattern. Returns [PASS]/[FAIL] — never throws.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                pattern: { type: 'string', description: 'Substring to match in URL' },
-            },
-            required: ['pattern'],
-        },
-    },
-
-    // ── Perception (read page content as structured data) ────────────────────
-    {
-        name: 'browser_get_page_markdown',
-        description: 'Restricted to content that requires client-side JavaScript; prefer hela-enzyme extract_content for static pages. Extract page content as structured markdown (headings, lists, tables, links).',
-        annotations: { readOnlyHint: true },
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'Optional CSS selector to scope extraction (default: main content area).' },
-                maxLength: { type: 'number', description: 'Max output length in chars. Default 5000.' },
-            },
-        },
-    },
-    {
-        name: 'browser_get_accessibility_tree',
-        description: 'Get the accessibility tree as structured text — roles, names, states. Useful for understanding page structure without screenshots.',
-        annotations: { readOnlyHint: true },
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'Optional CSS selector to scope extraction.' },
-                maxLength: { type: 'number', description: 'Max output length in chars. Default 5000.' },
-            },
-        },
     },
 
     // ── Network Mocking ──────────────────────────────────────────────────────
@@ -1082,20 +911,6 @@ const TOOLS = [
             required: ['ref'],
         }
     },
-    // ── Click Nth ────────────────────────────────────────────────────────────
-    {
-        name: 'browser_click_nth',
-        description: 'Click the Nth element matching a selector (0-based). Avoids "strict mode violation" when multiple elements match.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'CSS selector matching multiple elements' },
-                index: { type: 'number', description: '0-based index of which match to click' },
-            },
-            required: ['selector', 'index'],
-        },
-    },
-
     // ── Visual Debug ─────────────────────────────────────────────────────────
     {
         name: 'browser_highlight',
@@ -1106,21 +921,6 @@ const TOOLS = [
                 selector: { type: 'string', description: 'CSS selector to highlight' },
                 color: { type: 'string', default: 'red', description: 'Border color' },
                 durationMs: { type: 'number', default: 3000, description: 'How long to show the highlight (ms)' },
-            },
-            required: ['selector'],
-        },
-    },
-
-    // ── Wait for Change ──────────────────────────────────────────────────────
-    {
-        name: 'browser_wait_for_change',
-        description: 'Wait for an element text or attribute to change. Essential for SPAs where content updates after actions.',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: { type: 'string', description: 'CSS selector to watch' },
-                attribute: { type: 'string', description: 'Attribute to watch (default: textContent)' },
-                timeout: { type: 'number', default: 10000, description: 'Max wait in ms' },
             },
             required: ['selector'],
         },
@@ -1205,7 +1005,583 @@ const TOOLS = [
     },
 ];
 
-async function handleToolCall(name, args) {
+function normalizeToolCall(name, args) {
+    switch (name) {
+        case 'browser_click_text':
+            return { name: 'browser_click', args: { ...args, text: args.text, type: args.type || 'any' } };
+        case 'browser_click_nth':
+            return { name: 'browser_click', args: { ...args, nth: args.index, index: args.index } };
+        case 'browser_click_ref':
+            return { name: 'browser_click', args: { ...args, ref: args.ref } };
+        case 'browser_double_click':
+            return { name: 'browser_click', args: { ...args, count: 2 } };
+        case 'browser_right_click':
+            return { name: 'browser_click', args: { ...args, button: 'right' } };
+        case 'browser_get_text':
+            return { name: 'browser_get_content', args: { ...args, format: 'text' } };
+        case 'browser_get_html':
+            return { name: 'browser_get_content', args: { ...args, format: 'html' } };
+        case 'browser_get_visible_text':
+            return { name: 'browser_get_content', args: { ...args, format: 'visible' } };
+        case 'browser_get_page_markdown':
+            return { name: 'browser_get_content', args: { ...args, format: 'markdown' } };
+        case 'browser_get_accessibility_tree':
+            return { name: 'browser_get_content', args: { ...args, format: 'axtree' } };
+        case 'browser_wait_until_stable':
+            return { name: 'browser_wait', args: { ...args, condition: 'stable', timeoutMs: args.timeout ?? args.timeoutMs } };
+        case 'browser_wait_for_load':
+            return { name: 'browser_wait', args: { ...args, condition: 'load', timeoutMs: args.timeout ?? args.timeoutMs } };
+        case 'browser_wait_for_selector':
+            return { name: 'browser_wait', args: { ...args, condition: 'selector', target: args.selector, timeoutMs: args.timeout ?? args.timeoutMs } };
+        case 'browser_wait_for_url':
+            return { name: 'browser_wait', args: { ...args, condition: 'url', target: args.pattern, timeoutMs: args.timeout ?? args.timeoutMs } };
+        case 'browser_wait_for_navigation':
+            return { name: 'browser_wait', args: { ...args, condition: 'navigation', target: args.urlPattern, timeoutMs: args.timeout ?? args.timeoutMs } };
+        case 'browser_wait_for_change':
+            return { name: 'browser_wait', args: { ...args, condition: 'change', target: args.selector, timeoutMs: args.timeout ?? args.timeoutMs } };
+        case 'browser_assert_visible':
+            return { name: 'browser_assert', args: { ...args, type: 'visible', target: args.selector } };
+        case 'browser_assert_text':
+            return { name: 'browser_assert', args: { ...args, type: 'text', target: args.selector } };
+        case 'browser_assert_url':
+            return { name: 'browser_assert', args: { ...args, type: 'url', target: args.pattern } };
+        case 'browser_scroll_to':
+            return { name: 'browser_scroll', args: { ...args, mode: 'to' } };
+        case 'browser_smart_scroll':
+            return { name: 'browser_scroll', args: { ...args, mode: 'lazy' } };
+        default:
+            return { name, args };
+    }
+}
+
+async function clickTarget(page, args) {
+    const delay = args.delay ?? (AGENT_CONFIG.profile === 'stealth' ? Math.floor(Math.random() * 100) + 50 : 0);
+    const button = args.button || 'left';
+    const count = Number.isFinite(Number(args.count)) ? Math.max(1, Math.trunc(Number(args.count))) : 1;
+    const nth = args.nth ?? args.index;
+    const clickAt = async (x, y) => {
+        if (AGENT_CONFIG.profile === 'stealth') {
+            await page.mouse.move(x + (Math.random() - 0.5) * 4, y + (Math.random() - 0.5) * 4, { steps: 5 });
+            await page.waitForTimeout(Math.random() * 200 + 100);
+        }
+        await page.mouse.click(x, y, { delay, button, clickCount: count });
+    };
+
+    if (args.ref !== undefined) {
+        const el = getElementByRef(args.ref);
+        if (!el) {
+            return { content: [{ type: 'text', text: `Ref ${args.ref} not found. Call browser_observe or browser_get_state first.` }], isError: true };
+        }
+        const cx = el.x + Math.floor(el.w / 2);
+        const cy = el.y + Math.floor(el.h / 2);
+        const label = el.text ? ` "${el.text.substring(0, 50)}"` : '';
+        await clickAt(cx, cy);
+        recorder.record('click', { ref: args.ref, label: el.text, x: cx, y: cy, selector: el.id ? `#${el.id}` : null });
+        const urlBefore = page.url();
+        await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
+        const urlAfter = page.url();
+        let resultText = `Clicked ref ${args.ref} (${el.tag}${label}) at (${cx}, ${cy}).`;
+        resultText += urlBefore !== urlAfter ? ` Action resulted in navigation to: ${urlAfter}` : ' Action completed on current page.';
+        return { content: [{ type: 'text', text: resultText }] };
+    }
+
+    if (args.text !== undefined) {
+        const text = String(args.text).trim();
+        if (!text) {
+            return { content: [{ type: 'text', text: 'text must not be empty.' }], isError: true };
+        }
+        const hostname = page.url() ? new URL(page.url()).hostname : 'unknown';
+        const elType = args.type || 'any';
+        const cacheKey = `click_text::v2::${elType}::${text}`;
+        const cached = cache.get(hostname, cacheKey);
+        if (cached) {
+            try {
+                if (nth !== undefined) {
+                    const locator = page.locator(cached);
+                    const matches = await locator.count();
+                    if (nth < 0 || nth >= matches) throw new Error(`index ${nth} out of range (${matches} matches)`);
+                    await locator.nth(nth).click({ button, clickCount: count, delay, timeout: 5000 });
+                } else {
+                    await page.click(cached, { button, clickCount: count, delay });
+                }
+                recorder.record('click', { text, elType, selector: cached, button, count });
+                return { content: [{ type: 'text', text: `Clicked "${text}" (cache hit: ${cached}).` }] };
+            } catch (_) {
+                cache.invalidate(hostname, cacheKey);
+            }
+        }
+        const baseSelector = elType === 'button' ? 'button, [role="button"]' : elType === 'link' ? 'a, [role="link"]' : null;
+        const selector = baseSelector ? `${baseSelector}:has-text(${JSON.stringify(text)})` : `text=${text}`;
+        try {
+            if (nth !== undefined) {
+                const locator = page.locator(selector);
+                const matches = await locator.count();
+                if (nth < 0 || nth >= matches) {
+                    return { content: [{ type: 'text', text: `Index ${nth} out of range (found ${matches} matches).` }], isError: true };
+                }
+                await locator.nth(nth).click({ button, clickCount: count, delay, timeout: 5000 });
+            } else {
+                await page.click(selector, { button, clickCount: count, delay });
+            }
+            cache.set(hostname, cacheKey, selector);
+            recorder.record('click', { text, elType, selector, button, count });
+            return { content: [{ type: 'text', text: `Clicked element with text "${text}".` }] };
+        } catch (e) {
+            return { content: [{ type: 'text', text: `Failed to click text "${text}": ${e.message}` }], isError: true };
+        }
+    }
+
+    if (args.selector) {
+        const selector = args.selector;
+        if (nth !== undefined) {
+            const locator = page.locator(selector);
+            const matches = await locator.count();
+            if (nth < 0 || nth >= matches) {
+                return { content: [{ type: 'text', text: `Index ${nth} out of range (found ${matches} matches).` }], isError: true };
+            }
+            if (AGENT_CONFIG.profile === 'stealth') {
+                const box = await locator.nth(nth).boundingBox({ timeout: 5000 });
+                if (box) {
+                    await page.mouse.move(box.x + box.width / 2 + (Math.random() - 0.5) * 4, box.y + box.height / 2 + (Math.random() - 0.5) * 4, { steps: 5 });
+                    await page.waitForTimeout(Math.random() * 150 + 80);
+                }
+            }
+            await locator.nth(nth).click({ button, clickCount: count, delay, timeout: 5000 });
+            recorder.record('click', { selector, index: nth, button, count });
+            return { content: [{ type: 'text', text: `Clicked ${selector} at index ${nth} (of ${matches}).` }] };
+        }
+
+        const hostname = page.url() ? new URL(page.url()).hostname : 'unknown';
+        const fallbacks = [
+            selector,
+            `${selector}:not([disabled])`,
+            ...(selector.includes(':has-text(') ? [] : [
+                `button:has-text("${selector.replace(/.*has-text\("([^"]+)"\).*/, '$1')}")`,
+                `[role="button"]:has-text("${selector.replace(/.*has-text\("([^"]+)"\).*/, '$1')}")`,
+                `a:has-text("${selector.replace(/.*has-text\("([^"]+)"\).*/, '$1')}")`,
+            ]),
+            ...(!selector.includes('.') && !selector.includes('#') && !selector.includes('[') ? [
+                `text="${selector}"`,
+                `text=${selector}`,
+            ] : []),
+        ];
+
+        let lastError;
+        for (const fallback of fallbacks) {
+            try {
+                const locator = page.locator(fallback).first();
+                await locator.click({ trial: true, timeout: 2000 });
+                const box = await locator.boundingBox({ timeout: 2000 });
+                if (!box) continue;
+                await clickAt(box.x + box.width / 2, box.y + box.height / 2);
+                const usedFallback = fallback !== selector ? ` (fallback: ${fallback})` : '';
+                recorder.record('click', { selector, fallback: fallback !== selector ? fallback : undefined, button, count });
+                return { content: [{ type: 'text', text: `Clicked "${selector}"${usedFallback} with ${delay}ms delay.` }] };
+            } catch (e) {
+                lastError = e;
+            }
+        }
+
+        const observed = await observeInteractable(page);
+        const match = observed.elements.find(el => {
+            const text = (el.text || '').toLowerCase();
+            const wanted = selector.toLowerCase();
+            return text.includes(wanted) || wanted.includes(text);
+        });
+        if (match) {
+            const cx = match.x + Math.floor(match.w / 2);
+            const cy = match.y + Math.floor(match.h / 2);
+            await clickAt(cx, cy);
+            recorder.record('click', { selector, x: cx, y: cy, button, count });
+            return { content: [{ type: 'text', text: `Clicked "${selector}" via element discovery fallback at (${cx}, ${cy}).` }] };
+        }
+        return { content: [{ type: 'text', text: `All click strategies failed for "${selector}". Last error: ${lastError?.message}` }], isError: true };
+    }
+
+    if (Number.isFinite(Number(args.x)) && Number.isFinite(Number(args.y))) {
+        await clickAt(Number(args.x), Number(args.y));
+        return { content: [{ type: 'text', text: `Clicked at (${args.x}, ${args.y}) with ${delay}ms delay.` }] };
+    }
+
+    return { content: [{ type: 'text', text: 'Provide ref, text, selector, or x and y coordinates.' }], isError: true };
+}
+
+async function getPageContent(page, args) {
+    const format = (args.format || 'markdown').toLowerCase();
+    const selector = args.selector;
+
+    if (format === 'text') {
+        if (!selector) {
+            return { content: [{ type: 'text', text: 'selector is required for format=text.' }], isError: true };
+        }
+        if (args.all) {
+            const texts = await page.evaluate((sel) => Array.from(document.querySelectorAll(sel)).map(el => el.innerText.trim()).filter(Boolean), selector);
+            const maxLines = args.maxLines ?? 100;
+            const truncated = texts.length > maxLines;
+            const limited = texts.slice(0, maxLines);
+            const suffix = truncated ? `\n... (${texts.length - maxLines} more, increase maxLines to see all)` : '';
+            return { content: [{ type: 'text', text: limited.join('\n---\n') + suffix }] };
+        }
+        const text = await page.evaluate((sel) => document.querySelector(sel)?.innerText?.trim() ?? null, selector);
+        return { content: [{ type: 'text', text: text || '(not found)' }] };
+    }
+
+    if (format === 'html') {
+        const html = selector
+            ? await page.evaluate((sel) => document.querySelector(sel)?.innerHTML ?? null, selector)
+            : await page.content();
+        return { content: [{ type: 'text', text: html || '(not found)' }] };
+    }
+
+    if (format === 'visible') {
+        const sel = selector || 'body';
+        const text = await page.evaluate((rootSelector) => {
+            const root = document.querySelector(rootSelector) || document.body;
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+            const lines = [];
+            let currentBlock = '';
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                const parent = node.parentElement;
+                if (!parent) continue;
+                const style = window.getComputedStyle(parent);
+                const rect = parent.getBoundingClientRect();
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+                if (rect.width === 0 && rect.height === 0) continue;
+                const tag = parent.tagName.toLowerCase();
+                if (tag === 'script' || tag === 'style' || tag === 'noscript') continue;
+                const text = node.textContent.trim();
+                if (!text) continue;
+                const isBlock = ['block', 'flex', 'grid', 'list-item', 'table', 'table-row'].includes(style.display);
+                if (isBlock && currentBlock) {
+                    lines.push(currentBlock);
+                    currentBlock = '';
+                }
+                currentBlock += (currentBlock ? ' ' : '') + text;
+            }
+            if (currentBlock) lines.push(currentBlock);
+            return lines.join('\n');
+        }, sel);
+        return { content: [{ type: 'text', text: text || '(no visible text found)' }] };
+    }
+
+    if (format === 'axtree') {
+        const maxLen = args.maxLength || 5000;
+        const tree = await page.evaluate(({ rootSelector, max }) => {
+            const root = rootSelector ? document.querySelector(rootSelector) : document.body;
+            if (!root) return '(element not found)';
+            const lines = [];
+            let charCount = 0;
+            function walk(el, depth) {
+                if (charCount >= max) return;
+                const role = el.getAttribute('role') || '';
+                const name = el.getAttribute('aria-label') || '';
+                const state = [];
+                if (el.getAttribute('aria-hidden') === 'true') state.push('hidden');
+                if (el.getAttribute('aria-disabled') === 'true') state.push('disabled');
+                if (el.getAttribute('aria-expanded')) state.push('expanded=' + el.getAttribute('aria-expanded'));
+                if (el.getAttribute('aria-checked')) state.push('checked=' + el.getAttribute('aria-checked'));
+                if (el.getAttribute('aria-selected')) state.push('selected=' + el.getAttribute('aria-selected'));
+                if (el.getAttribute('aria-current')) state.push('current=' + el.getAttribute('aria-current'));
+                if (el.tagName === 'INPUT') state.push('type=' + el.type);
+                if (el.tagName === 'A' && el.href) state.push('href=' + el.href.substring(0, 80));
+                const tag = el.tagName.toLowerCase();
+                const indent = '  '.repeat(depth);
+                const stateStr = state.length ? ' [' + state.join(', ') + ']' : '';
+                const nameStr = name ? ' "' + name + '"' : '';
+                const text = el.childNodes.length === 1 && el.childNodes[0].nodeType === 3
+                    ? ' "' + el.textContent.trim().substring(0, 50) + '"' : '';
+                lines.push(indent + tag + (role ? ' role=' + role : '') + (nameStr || text) + stateStr);
+                charCount += lines[lines.length - 1].length;
+                for (const child of el.children) walk(child, depth + 1);
+            }
+            walk(root, 0);
+            return lines.join('\n').substring(0, max);
+        }, { rootSelector: selector, max: maxLen });
+        return { content: [{ type: 'text', text: tree || '(no tree found)' }] };
+    }
+
+    if (format === 'markdown') {
+        const sel = selector || 'main, article, [role="main"], .content, body';
+        const maxLen = args.maxLength || 5000;
+        const markdown = await page.evaluate(({ rootSelector, max }) => {
+            const root = document.querySelector(rootSelector) || document.body;
+            const lines = [];
+            let charCount = 0;
+            function processNode(node) {
+                if (charCount >= max) return;
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const text = node.textContent.trim();
+                    if (text) { lines.push(text); charCount += text.length; }
+                    return;
+                }
+                if (node.nodeType !== Node.ELEMENT_NODE) return;
+                const tag = node.tagName.toLowerCase();
+                const style = window.getComputedStyle(node);
+                if (style.display === 'none' || style.visibility === 'hidden') return;
+                if (['script', 'style', 'noscript'].includes(tag)) return;
+                if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                    const level = parseInt(tag[1]);
+                    lines.push('\n' + '#'.repeat(level) + ' ' + node.textContent.trim());
+                    charCount += level + 1 + node.textContent.length;
+                } else if (tag === 'p') {
+                    lines.push('\n' + node.textContent.trim());
+                    charCount += node.textContent.length;
+                } else if (tag === 'li') {
+                    lines.push('- ' + node.textContent.trim());
+                    charCount += node.textContent.length + 2;
+                } else if (tag === 'a' && node.href) {
+                    const text = node.textContent.trim();
+                    if (text) { lines.push('[' + text + '](' + node.href + ')'); charCount += text.length + node.href.length; }
+                } else if (tag === 'img' && node.alt) {
+                    lines.push('![' + node.alt + '](' + node.src + ')');
+                    charCount += node.alt.length + node.src.length;
+                } else if (tag === 'table') {
+                    const rows = Array.from(node.querySelectorAll('tr'));
+                    rows.forEach((row, i) => {
+                        const cells = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.trim());
+                        lines.push('| ' + cells.join(' | ') + ' |');
+                        if (i === 0) lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
+                    });
+                } else {
+                    for (const child of node.childNodes) processNode(child);
+                    return;
+                }
+                if (!['table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li'].includes(tag)) {
+                    for (const child of node.childNodes) processNode(child);
+                }
+            }
+            processNode(root);
+            return lines.join('\n').substring(0, max);
+        }, { rootSelector: sel, max: maxLen });
+        return { content: [{ type: 'text', text: markdown || '(no content found)' }] };
+    }
+
+    return { content: [{ type: 'text', text: `Unsupported format: ${format}` }], isError: true };
+}
+
+async function waitForCondition(page, args) {
+    const condition = args.condition || 'time';
+    const timeout = args.timeoutMs ?? args.timeout;
+    const target = args.target ?? args.selector ?? args.pattern;
+
+    if (condition === 'time') {
+        const ms = args.ms ?? timeout;
+        if (!Number.isFinite(Number(ms))) {
+            return { content: [{ type: 'text', text: 'ms or timeoutMs is required for condition=time.' }], isError: true };
+        }
+        await page.waitForTimeout(Number(ms));
+        return { content: [{ type: 'text', text: `Waited ${ms}ms.` }] };
+    }
+
+    if (condition === 'selector') {
+        if (!target) return { content: [{ type: 'text', text: 'target is required for condition=selector.' }], isError: true };
+        try {
+            await page.waitForSelector(target, { timeout: timeout || 10000, state: 'visible' });
+            return { content: [{ type: 'text', text: `Selector ${target} is visible.` }] };
+        } catch (e) {
+            return { content: [{ type: 'text', text: `Timeout waiting for selector "${target}".` }], isError: true };
+        }
+    }
+
+    if (condition === 'url') {
+        if (!target) return { content: [{ type: 'text', text: 'target is required for condition=url.' }], isError: true };
+        const isRegex = target.startsWith('regex:');
+        const pattern = isRegex ? target.slice(6) : target;
+        try {
+            await page.waitForFunction(([pat, rx]) => {
+                const url = location.href;
+                return rx ? new RegExp(pat).test(url) : url.includes(pat);
+            }, [pattern, isRegex], { timeout: timeout || 15000 });
+            return { content: [{ type: 'text', text: `URL matches pattern.` }] };
+        } catch (e) {
+            return { content: [{ type: 'text', text: `Timeout waiting for URL pattern "${target}". Current: ${page.url()}` }], isError: true };
+        }
+    }
+
+    if (condition === 'load') {
+        const state = args.state || 'load';
+        await page.waitForLoadState(state, { timeout: timeout || 30000 });
+        return { content: [{ type: 'text', text: `Page reached "${state}" state.` }] };
+    }
+
+    if (condition === 'stable') {
+        await page.waitForLoadState('networkidle', { timeout: timeout || 30000 });
+        return { content: [{ type: 'text', text: 'Page state is stable.' }] };
+    }
+
+    if (condition === 'change') {
+        if (!target) return { content: [{ type: 'text', text: 'target is required for condition=change.' }], isError: true };
+        const changeTimeout = timeout || 10000;
+        const attribute = args.attribute || 'textContent';
+        try {
+            if (attribute === 'textContent' || attribute === 'innerText') {
+                const initial = await page.locator(target).first().textContent({ timeout: 3000 }) || '';
+                await page.waitForFunction(([sel, initialText, attr]) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    return (attr === 'innerText' ? el.innerText : el.textContent) !== initialText;
+                }, [target, initial, attribute], { timeout: changeTimeout });
+            } else {
+                const initial = await page.locator(target).first().getAttribute(attribute, { timeout: 3000 });
+                await page.waitForFunction(([sel, attr, initialValue]) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return false;
+                    return el.getAttribute(attr) !== initialValue;
+                }, [target, attribute, initial], { timeout: changeTimeout });
+            }
+            return { content: [{ type: 'text', text: `${target} ${attribute} changed.` }] };
+        } catch (e) {
+            return { content: [{ type: 'text', text: `Timeout waiting for ${target} ${attribute} to change.` }], isError: true };
+        }
+    }
+
+    if (condition === 'navigation') {
+        const navigationTimeout = timeout || 15000;
+        const initialUrl = page.url();
+        if (!target && !args.selector) {
+            await page.waitForFunction((prevUrl) => location.href !== prevUrl, initialUrl, { timeout: navigationTimeout });
+            return { content: [{ type: 'text', text: `URL changed from ${initialUrl} to ${page.url()}` }] };
+        }
+        if (target) {
+            const isRegex = target.startsWith('regex:');
+            const pattern = isRegex ? target.slice(6) : target;
+            try {
+                await page.waitForFunction(([pat, rx]) => {
+                    const url = location.href;
+                    return rx ? new RegExp(pat).test(url) : url.includes(pat);
+                }, [pattern, isRegex], { timeout: navigationTimeout });
+                return { content: [{ type: 'text', text: `URL now matches "${target}" → ${page.url()}` }] };
+            } catch (e) {
+                return { content: [{ type: 'text', text: `Timeout waiting for URL pattern "${target}". Current: ${page.url()}` }], isError: true };
+            }
+        }
+        try {
+            await page.waitForSelector(args.selector, { timeout: navigationTimeout, state: 'visible' });
+            return { content: [{ type: 'text', text: `Selector "${args.selector}" appeared.` }] };
+        } catch (e) {
+            return { content: [{ type: 'text', text: `Timeout waiting for selector "${args.selector}".` }], isError: true };
+        }
+    }
+
+    return { content: [{ type: 'text', text: `Unsupported wait condition: ${condition}` }], isError: true };
+}
+
+async function assertCondition(page, args) {
+    let type = args.type;
+    if (!type && args.conditionType) type = args.conditionType === 'selector' ? 'element' : args.conditionType;
+    type = type || 'element';
+    const target = args.target ?? args.condition ?? args.selector ?? args.pattern;
+    if (!target) {
+        return { content: [{ type: 'text', text: 'target is required.' }], isError: true };
+    }
+
+    if (type === 'element' || type === 'selector') {
+        let passed = false;
+        let actual = null;
+        const el = await page.$(target);
+        if (el) {
+            const text = await el.innerText().catch(() => '');
+            if (args.expected) {
+                passed = text.includes(args.expected);
+                actual = text.trim().substring(0, 300);
+            } else {
+                passed = true;
+            }
+        } else {
+            const tag = target.split(/[\s.#\[]/)[0] || 'div';
+            const nearby = await page.evaluate(t => {
+                const els = Array.from(document.querySelectorAll(t)).slice(0, 5);
+                return els.map(e => e.outerHTML.substring(0, 200)).join('\n');
+            }, tag).catch(() => '');
+            actual = nearby || '(element not found, page may have changed)';
+        }
+        if (passed) return { content: [{ type: 'text', text: '✓ Assert passed.' }] };
+        return { content: [{ type: 'text', text: `✗ Assert failed.\nCondition: ${target}\nActual: ${actual}` }], isError: true };
+    }
+
+    if (type === 'visible') {
+        try {
+            const visible = await page.locator(target).first().isVisible({ timeout: 5000 });
+            if (visible) return { content: [{ type: 'text', text: `[PASS] ${target} is visible` }] };
+            return { content: [{ type: 'text', text: `[FAIL] ${target} is not visible` }] };
+        } catch (e) {
+            return { content: [{ type: 'text', text: `[FAIL] ${target} — ${e.message}` }] };
+        }
+    }
+
+    if (type === 'text') {
+        try {
+            const element = page.locator(target).first();
+            const content = await element.textContent({ timeout: 5000 }) || '';
+            if (content.includes(args.expected)) {
+                const idx = content.indexOf(args.expected);
+                const start = Math.max(0, idx - 50);
+                const end = Math.min(content.length, idx + args.expected.length + 50);
+                const context = (start > 0 ? '...' : '') + content.substring(start, end) + (end < content.length ? '...' : '');
+                return { content: [{ type: 'text', text: `[PASS] Found "${args.expected}" in ${target}`, data: { found: true, context } }] };
+            }
+            return { content: [{ type: 'text', text: `[FAIL] "${args.expected}" not found in ${target} (${content.length} chars)`, data: { found: false, text: content.substring(0, 300) } }] };
+        } catch (e) {
+            return { content: [{ type: 'text', text: `[FAIL] ${target} — ${e.message}` }] };
+        }
+    }
+
+    if (type === 'url') {
+        const currentUrl = page.url();
+        if (currentUrl.includes(target)) {
+            return { content: [{ type: 'text', text: `[PASS] URL contains "${target}"`, data: { match: true, url: currentUrl } }] };
+        }
+        return { content: [{ type: 'text', text: `[FAIL] URL does not contain "${target}"`, data: { match: false, url: currentUrl } }] };
+    }
+
+    if (type === 'js') {
+        if (process.env.HELA_BROWSER_ALLOW_EVAL !== 'true') {
+            return { content: [{ type: 'text', text: 'Evaluation blocked: browser_assert with type="js" requires HELA_BROWSER_ALLOW_EVAL=true (R3 privilege).' }], isError: true };
+        }
+        const result = await page.evaluate(expr => {
+            // eslint-disable-next-line no-new-func
+            return new Function(`return (${expr})`)();
+        }, target).catch(e => ({ error: e.message }));
+        const passed = !!result && !result.error;
+        if (passed) return { content: [{ type: 'text', text: '✓ Assert passed.' }] };
+        return { content: [{ type: 'text', text: `✗ Assert failed.\nCondition: ${target}\nActual: ${JSON.stringify(result)}` }], isError: true };
+    }
+
+    return { content: [{ type: 'text', text: `Unsupported assertion type: ${type}` }], isError: true };
+}
+
+async function scrollPage(page, args) {
+    const mode = args.mode || (args.selector !== undefined || (Number.isFinite(Number(args.x)) && Number.isFinite(Number(args.y))) ? 'to' : args.steps !== undefined ? 'lazy' : 'by');
+
+    if (mode === 'to') {
+        if (args.selector) await page.locator(args.selector).scrollIntoViewIfNeeded();
+        else await page.evaluate(({ x, y }) => window.scrollTo(x, y), { x: Number(args.x) || 0, y: Number(args.y) || 0 });
+        return { content: [{ type: 'text', text: 'Scrolled to target.' }] };
+    }
+
+    if (mode === 'lazy') {
+        const steps = args.steps ?? 5;
+        const delay = args.delayMs ?? 800;
+        for (let i = 0; i < steps; i++) {
+            await page.evaluate(() => window.scrollBy(0, 600));
+            await page.waitForTimeout(delay);
+        }
+        return { content: [{ type: 'text', text: `Smart scroll completed (${steps} steps).` }] };
+    }
+
+    if (mode === 'by') {
+        const amount = args.amount || 500;
+        const delta = args.direction === 'up' ? -amount : amount;
+        await page.mouse.wheel(0, delta);
+        return { content: [{ type: 'text', text: 'Scrolled.' }] };
+    }
+
+    return { content: [{ type: 'text', text: `Unsupported scroll mode: ${mode}` }], isError: true };
+}
+
+async function handleToolCall(name, args = {}) {
+    ({ name, args } = normalizeToolCall(name, args));
     const page = await getPage();
 
     switch (name) {
@@ -1285,12 +1661,8 @@ async function handleToolCall(name, args) {
             const success = await switchPage(args.index);
             return { content: [{ type: 'text', text: success ? `Switched to tab ${args.index}.` : `Failed to switch to tab ${args.index}.` }] };
         }
-        case 'browser_wait_until_stable':
-            await page.waitForLoadState('networkidle', { timeout: args.timeout || 30000 });
-            return { content: [{ type: 'text', text: 'Page state is stable.' }] };
-        case 'browser_wait_for_load':
-            await page.waitForLoadState(args.state || 'load', { timeout: args.timeout || 30000 });
-            return { content: [{ type: 'text', text: `Page reached "${args.state || 'load'}" state.` }] };
+        case 'browser_wait':
+            return waitForCondition(page, args);
         case 'browser_back':
             await page.goBack({ waitUntil: 'load' });
             return { content: [{ type: 'text', text: 'Navigated back.' }] };
@@ -1300,128 +1672,9 @@ async function handleToolCall(name, args) {
         case 'browser_reload':
             await page.reload({ waitUntil: 'load' });
             return { content: [{ type: 'text', text: 'Reloaded.' }] };
-        case 'browser_wait':
-            await page.waitForTimeout(args.ms);
-            return { content: [{ type: 'text', text: `Waited ${args.ms}ms.` }] };
-        case 'browser_wait_for_selector':
-            await page.waitForSelector(args.selector, { timeout: args.timeout || 10000 });
-            return { content: [{ type: 'text', text: `Selector ${args.selector} is visible.` }] };
-        case 'browser_wait_for_url': {
-            const isRegex = args.pattern.startsWith('regex:');
-            const pattern = isRegex ? args.pattern.slice(6) : args.pattern;
-            await page.waitForFunction(([pat, rx]) => {
-                const u = location.href;
-                return rx ? new RegExp(pat).test(u) : u.includes(pat);
-            }, [pattern, isRegex], { timeout: args.timeout || 15000 });
-            return { content: [{ type: 'text', text: `URL matches pattern.` }] };
-        }
-
         // Interaction
-        case 'browser_click': {
-            const delay = args.delay || (AGENT_CONFIG.profile === 'stealth' ? Math.floor(Math.random() * 100) + 50 : 0);
-            
-            if (!args.selector && args.x !== undefined && args.y !== undefined) {
-                // Coordinate click — no fallback needed
-                if (AGENT_CONFIG.profile === 'stealth') {
-                    await page.mouse.move(args.x + (Math.random() - 0.5) * 4, args.y + (Math.random() - 0.5) * 4, { steps: 5 });
-                    await page.waitForTimeout(Math.random() * 200 + 100);
-                }
-                await page.mouse.click(args.x, args.y, { delay });
-                return { content: [{ type: 'text', text: `Clicked at (${args.x}, ${args.y}) with ${delay}ms delay.` }] };
-            }
-
-            // Smart retry with fallback selectors
-            // Why: text= selectors fail with "strict mode violation" when multiple elements match.
-            // Strategy: try the original selector, then relax constraints progressively.
-            // Order: exact → :not([disabled]) → role-based → text variants → element discovery.
-            const selector = args.selector;
-            const hostname = page.url() ? new URL(page.url()).hostname : 'unknown';
-            const fallbacks = [
-                selector,
-                `${selector}:not([disabled])`,
-                // If selector already contains :has-text(), don't extract text again
-                ...(selector.includes(':has-text(') ? [] : [
-                    `button:has-text("${selector.replace(/.*has-text\("([^"]+)"\).*/, '$1')}")`,
-                    `[role="button"]:has-text("${selector.replace(/.*has-text\("([^"]+)"\).*/, '$1')}")`,
-                    `a:has-text("${selector.replace(/.*has-text\("([^"]+)"\).*/, '$1')}")`,
-                ]),
-                // For plain text strings (no CSS syntax), try Playwright text selectors
-                ...(!selector.includes('.') && !selector.includes('#') && !selector.includes('[') ? [
-                    `text="${selector}"`,
-                    `text=${selector}`,
-                ] : []),
-            ];
-
-            // Try each fallback with a short timeout — first match wins
-            let lastError;
-            for (const fb of fallbacks) {
-                try {
-                    const loc = page.locator(fb).first();
-                    // Trial click ensures the element is visible, enabled, and NOT occluded by a modal.
-                    await loc.click({ trial: true, timeout: 2000 });
-                    
-                    const box = await loc.boundingBox({ timeout: 2000 });
-                    if (!box) continue;
-
-                    // Stealth mode: move mouse to center with jitter, then click
-                    // This mimics human behavior and avoids bot detection heuristics
-                    if (AGENT_CONFIG.profile === 'stealth') {
-                        const jitterX = (Math.random() - 0.5) * 4;
-                        const jitterY = (Math.random() - 0.5) * 4;
-                        await page.mouse.move(box.x + box.width / 2 + jitterX, box.y + box.height / 2 + jitterY, { steps: 5 });
-                        await page.waitForTimeout(Math.random() * 200 + 100);
-                    }
-
-                    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { delay });
-                    const usedFallback = fb !== selector ? ` (fallback: ${fb})` : '';
-                    recorder.record('click', { selector, fallback: fb !== selector ? fb : undefined });
-                    return { content: [{ type: 'text', text: `Clicked "${selector}"${usedFallback} with ${delay}ms delay.` }] };
-                } catch (e) {
-                    lastError = e;
-                }
-            }
-
-            // Last resort: scan the accessibility tree for any element whose text matches.
-            // This handles cases where the DOM structure is completely different from
-            // what the selector expects (e.g., custom web components, shadow DOM).
-            const observed = await observeInteractable(page);
-            const match = observed.elements.find(el => {
-                const t = (el.text || '').toLowerCase();
-                const s = selector.toLowerCase();
-                return t.includes(s) || s.includes(t);
-            });
-
-            if (match) {
-                const cx = match.x + Math.floor(match.w / 2);
-                const cy = match.y + Math.floor(match.h / 2);
-                await page.mouse.click(cx, cy, { delay });
-                return { content: [{ type: 'text', text: `Clicked "${selector}" via element discovery fallback at (${cx}, ${cy}).` }] };
-            }
-
-            return { content: [{ type: 'text', text: `All click strategies failed for "${selector}". Last error: ${lastError?.message}` }], isError: true };
-        }
-        case 'browser_click_text': {
-            const hostname = new URL(page.url()).hostname;
-            const cacheKey = `click_text::${args.type || 'any'}::${args.text}`;
-            const cached = cache.get(hostname, cacheKey);
-
-            if (cached) {
-                const ok = await page.click(cached).then(() => true).catch(() => false);
-                if (ok) {
-                    recorder.record('click_text', { text: args.text, elType: args.type, selector: cached });
-                    return { content: [{ type: 'text', text: `Clicked "${args.text}" (cache hit: ${cached}).` }] };
-                }
-                cache.invalidate(hostname, cacheKey);
-            }
-
-            // Cache miss or stale: discover selector
-            const baseSelector = args.type === 'button' ? 'button, [role="button"]' : args.type === 'link' ? 'a, [role="link"]' : '*';
-            const selector = `${baseSelector}:has-text("${args.text}")`;
-            await page.click(selector);
-            cache.set(hostname, cacheKey, selector);
-            recorder.record('click_text', { text: args.text, elType: args.type, selector });
-            return { content: [{ type: 'text', text: `Clicked element with text "${args.text}".` }] };
-        }
+        case 'browser_click':
+            return clickTarget(page, args);
         case 'browser_fill_form': {
             // Type-aware mode detects each input's HTML type and uses the right Playwright method.
             // Why: plain page.fill() doesn't work for checkboxes, selects, file inputs, or
@@ -1514,14 +1767,6 @@ async function handleToolCall(name, args) {
             const tag = args.typeAware ? ' (type-aware)' : '';
             return { content: [{ type: 'text', text: `Filled ${actions.length} field(s)${tag}: ${actions.join(', ')}${args.submit ? ' + submitted' : ''}.` }] };
         }
-        case 'browser_double_click':
-            if (args.selector) await page.dblclick(args.selector);
-            else await page.mouse.dblclick(args.x, args.y);
-            return { content: [{ type: 'text', text: 'Double-clicked.' }] };
-        case 'browser_right_click':
-            if (args.selector) await page.click(args.selector, { button: 'right' });
-            else await page.mouse.click(args.x, args.y, { button: 'right' });
-            return { content: [{ type: 'text', text: 'Right-clicked.' }] };
         case 'browser_hover':
             if (args.selector) await page.hover(args.selector);
             else await page.mouse.move(args.x, args.y);
@@ -1529,25 +1774,8 @@ async function handleToolCall(name, args) {
         case 'browser_drag':
             await page.dragAndDrop(args.source, args.target);
             return { content: [{ type: 'text', text: 'Drag-and-drop executed.' }] };
-        case 'browser_scroll': {
-            const amount = args.amount || 500;
-            const delta = args.direction === 'up' ? -amount : amount;
-            await page.mouse.wheel(0, delta);
-            return { content: [{ type: 'text', text: 'Scrolled.' }] };
-        }
-        case 'browser_scroll_to':
-            if (args.selector) await page.locator(args.selector).scrollIntoViewIfNeeded();
-            else await page.evaluate(({ x, y }) => window.scrollTo(x, y), { x: args.x || 0, y: args.y || 0 });
-            return { content: [{ type: 'text', text: 'Scrolled to target.' }] };
-        case 'browser_smart_scroll': {
-            const steps = args.steps ?? 5;
-            const delay = args.delayMs ?? 800;
-            for (let i = 0; i < steps; i++) {
-                await page.evaluate(() => window.scrollBy(0, 600));
-                await page.waitForTimeout(delay);
-            }
-            return { content: [{ type: 'text', text: `Smart scroll completed (${steps} steps).` }] };
-        }
+        case 'browser_scroll':
+            return scrollPage(page, args);
 
         case 'browser_type': {
             const delay = args.delay || (AGENT_CONFIG.profile === 'stealth' ? 120 : 10);
@@ -1650,24 +1878,8 @@ async function handleToolCall(name, args) {
             }
             return { content };
         }
-        case 'browser_get_text': {
-            if (args.all) {
-                const texts = await page.evaluate((sel) => Array.from(document.querySelectorAll(sel)).map(el => el.innerText.trim()).filter(Boolean), args.selector);
-                const maxLines = args.maxLines ?? 100;
-                const truncated = texts.length > maxLines;
-                const limited = texts.slice(0, maxLines);
-                const suffix = truncated ? `\n... (${texts.length - maxLines} more, increase maxLines to see all)` : '';
-                return { content: [{ type: 'text', text: limited.join('\n---\n') + suffix }] };
-            }
-            const text = await page.evaluate((sel) => document.querySelector(sel)?.innerText?.trim() ?? null, args.selector);
-            return { content: [{ type: 'text', text: text || '(not found)' }] };
-        }
-        case 'browser_get_html': {
-            const html = args.selector 
-                ? await page.evaluate((sel) => document.querySelector(sel)?.innerHTML ?? null, args.selector)
-                : await page.content();
-            return { content: [{ type: 'text', text: html || '(not found)' }] };
-        }
+        case 'browser_get_content':
+            return getPageContent(page, args);
         case 'browser_screenshot': {
             if (args.mark_elements) {
                 // Quickly grab elements without full state capture to get ref positions
@@ -2667,43 +2879,6 @@ async function handleToolCall(name, args) {
         }
 
         // ── Phase 1 Enhancements ─────────────────────────────────────────────
-        case 'browser_wait_for_navigation': {
-            const startTime = Date.now();
-            const timeout = args.timeout || 15000;
-            const initialUrl = page.url();
-
-            // If no args, just wait for any URL change
-            if (!args.urlPattern && !args.selector) {
-                await page.waitForFunction((prevUrl) => location.href !== prevUrl, initialUrl, { timeout });
-                return { content: [{ type: 'text', text: `URL changed from ${initialUrl} to ${page.url()}` }] };
-            }
-
-            // Wait for URL pattern
-            if (args.urlPattern) {
-                const isRegex = args.urlPattern.startsWith('regex:');
-                const pattern = isRegex ? args.urlPattern.slice(6) : args.urlPattern;
-                try {
-                    await page.waitForFunction(([pat, rx]) => {
-                        const u = location.href;
-                        return rx ? new RegExp(pat).test(u) : u.includes(pat);
-                    }, [pattern, isRegex], { timeout });
-                    return { content: [{ type: 'text', text: `URL now matches "${args.urlPattern}" → ${page.url()}` }] };
-                } catch (e) {
-                    return { content: [{ type: 'text', text: `Timeout waiting for URL pattern "${args.urlPattern}". Current: ${page.url()}` }], isError: true };
-                }
-            }
-
-            // Wait for selector
-            if (args.selector) {
-                try {
-                    await page.waitForSelector(args.selector, { timeout, state: 'visible' });
-                    return { content: [{ type: 'text', text: `Selector "${args.selector}" appeared.` }] };
-                } catch (e) {
-                    return { content: [{ type: 'text', text: `Timeout waiting for selector "${args.selector}".` }], isError: true };
-                }
-            }
-        }
-
         case 'browser_select_by_index': {
             const { selector, index, indices } = args;
 
@@ -2793,52 +2968,6 @@ async function handleToolCall(name, args) {
             return { content: [{ type: 'text', text: `Unsupported input type: ${inputType}. Use for radio or checkbox only.` }], isError: true };
         }
 
-        case 'browser_get_visible_text': {
-            const sel = args.selector || 'body';
-            const text = await page.evaluate((selector) => {
-                const root = document.querySelector(selector) || document.body;
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
-                const lines = [];
-                let currentBlock = '';
-
-                while (walker.nextNode()) {
-                    const node = walker.currentNode;
-                    const parent = node.parentElement;
-                    if (!parent) continue;
-
-                    const style = window.getComputedStyle(parent);
-                    const rect = parent.getBoundingClientRect();
-
-                    // Skip hidden elements
-                    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
-                    if (rect.width === 0 && rect.height === 0) continue;
-
-                    // Skip script/style
-                    const tag = parent.tagName.toLowerCase();
-                    if (tag === 'script' || tag === 'style' || tag === 'noscript') continue;
-
-                    const text = node.textContent.trim();
-                    if (!text) continue;
-
-                    // Block-level elements get their own line
-                    const display = style.display;
-                    const isBlock = ['block', 'flex', 'grid', 'list-item', 'table', 'table-row'].includes(display);
-
-                    if (isBlock && currentBlock) {
-                        lines.push(currentBlock);
-                        currentBlock = '';
-                    }
-
-                    currentBlock += (currentBlock ? ' ' : '') + text;
-                }
-
-                if (currentBlock) lines.push(currentBlock);
-                return lines.join('\n');
-            }, sel);
-
-            return { content: [{ type: 'text', text: text || '(no visible text found)' }] };
-        }
-
         // Helpers
         case 'browser_dismiss_popups': {
             const dismissed = await page.evaluate(() => {
@@ -2885,36 +3014,6 @@ async function handleToolCall(name, args) {
             const observed = await observeInteractable(page);
             return { content: [{ type: 'text', text: JSON.stringify(observed, null, 2) }] };
         }
-        case 'browser_click_ref': {
-            const el = getElementByRef(args.ref);
-            if (!el) {
-                return { content: [{ type: 'text', text: `Ref ${args.ref} not found. Call browser_observe or browser_get_state first.` }], isError: true };
-            }
-            const cx = el.x + Math.floor(el.w / 2);
-            const cy = el.y + Math.floor(el.h / 2);
-            const label = el.text ? ` "${el.text.substring(0, 50)}"` : '';
-            if (AGENT_CONFIG.profile === 'stealth') {
-                await page.mouse.move(cx + (Math.random() - 0.5) * 4, cy + (Math.random() - 0.5) * 4, { steps: 5 });
-                await page.waitForTimeout(Math.random() * 150 + 80);
-            }
-            await page.mouse.click(cx, cy);
-            recorder.record('click_ref', { ref: args.ref, label: el.text, x: cx, y: cy, selector: el.id ? `#${el.id}` : null });
-            
-            // SOTA Action Verification: Wait for DOM/Network to settle
-            const urlBefore = page.url();
-            await page.waitForLoadState('networkidle', { timeout: 1500 }).catch(() => {});
-            const urlAfter = page.url();
-            
-            let resultText = `Clicked ref ${args.ref} (${el.tag}${label}) at (${cx}, ${cy}).`;
-            if (urlBefore !== urlAfter) {
-                resultText += ` Action resulted in navigation to: ${urlAfter}`;
-            } else {
-                resultText += ` Action completed on current page.`;
-            }
-            
-            return { content: [{ type: 'text', text: resultText }] };
-        }
-        
         case 'browser_download_click': {
             const el = getElementByRef(args.ref);
             if (!el) {
@@ -3100,58 +3199,8 @@ async function handleToolCall(name, args) {
         }
 
         // Planner-validator
-        case 'browser_assert': {
-            const type = args.conditionType || 'selector';
-            let passed = false;
-            let actual = null;
-
-            if (type === 'selector') {
-                const el = await page.$(args.condition);
-                if (el) {
-                    const text = await el.innerText().catch(() => '');
-                    if (args.expected) {
-                        passed = text.includes(args.expected);
-                        actual = text.trim().substring(0, 300);
-                    } else {
-                        passed = true;
-                    }
-                } else {
-                    passed = false;
-                    // Report what is near the selector's tag on the page to help re-plan
-                    const tag = args.condition.split(/[\s.#\[]/)[0] || 'div';
-                    const nearby = await page.evaluate(t => {
-                        const els = Array.from(document.querySelectorAll(t)).slice(0, 5);
-                        return els.map(e => e.outerHTML.substring(0, 200)).join('\n');
-                    }, tag).catch(() => '');
-                    actual = nearby || '(element not found, page may have changed)';
-                }
-            } else if (type === 'url') {
-                const url = page.url();
-                passed = url.includes(args.condition);
-                actual = url;
-            } else if (type === 'js') {
-                if (process.env.HELA_BROWSER_ALLOW_EVAL !== 'true') {
-                    return {
-                        content: [{ type: 'text', text: 'Evaluation blocked: browser_assert with conditionType="js" requires HELA_BROWSER_ALLOW_EVAL=true (R3 privilege).' }],
-                        isError: true,
-                    };
-                }
-                const res = await page.evaluate(expr => {
-                    // eslint-disable-next-line no-new-func
-                    return new Function(`return (${expr})`)();
-                }, args.condition).catch(e => ({ error: e.message }));
-                passed = !!res && !res.error;
-                actual = JSON.stringify(res);
-            }
-
-            if (passed) {
-                return { content: [{ type: 'text', text: `✓ Assert passed.` }] };
-            }
-            return {
-                content: [{ type: 'text', text: `✗ Assert failed.\nCondition: ${args.condition}\nActual: ${actual}` }],
-                isError: true,
-            };
-        }
+        case 'browser_assert':
+            return assertCondition(page, args);
 
         // Cache management
         case 'browser_cache_stats': {
@@ -3163,147 +3212,6 @@ async function handleToolCall(name, args) {
         case 'browser_health': {
             const health = await healthCheck();
             return { content: [{ type: 'text', text: JSON.stringify(health, null, 2) }] };
-        }
-
-        // ── New Tools: Assertions ────────────────────────────────────────────────
-        case 'browser_assert_visible': {
-            try {
-                const visible = await page.locator(args.selector).first().isVisible({ timeout: 5000 });
-                if (visible) {
-                    return { content: [{ type: 'text', text: `[PASS] ${args.selector} is visible` }] };
-                }
-                return { content: [{ type: 'text', text: `[FAIL] ${args.selector} is not visible` }] };
-            } catch (e) {
-                return { content: [{ type: 'text', text: `[FAIL] ${args.selector} — ${e.message}` }] };
-            }
-        }
-        case 'browser_assert_text': {
-            try {
-                const element = page.locator(args.selector).first();
-                const content = await element.textContent({ timeout: 5000 }) || '';
-                if (content.includes(args.expected)) {
-                    const idx = content.indexOf(args.expected);
-                    const start = Math.max(0, idx - 50);
-                    const end = Math.min(content.length, idx + args.expected.length + 50);
-                    const ctx = (start > 0 ? '...' : '') + content.substring(start, end) + (end < content.length ? '...' : '');
-                    return { content: [{ type: 'text', text: `[PASS] Found "${args.expected}" in ${args.selector}`, data: { found: true, context: ctx } }] };
-                }
-                return { content: [{ type: 'text', text: `[FAIL] "${args.expected}" not found in ${args.selector} (${content.length} chars)`, data: { found: false, text: content.substring(0, 300) } }] };
-            } catch (e) {
-                return { content: [{ type: 'text', text: `[FAIL] ${args.selector} — ${e.message}` }] };
-            }
-        }
-        case 'browser_assert_url': {
-            const currentUrl = page.url();
-            if (currentUrl.includes(args.pattern)) {
-                return { content: [{ type: 'text', text: `[PASS] URL contains "${args.pattern}"`, data: { match: true, url: currentUrl } }] };
-            }
-            return { content: [{ type: 'text', text: `[FAIL] URL does not contain "${args.pattern}"`, data: { match: false, url: currentUrl } }] };
-        }
-
-        // ── New Tools: Perception ───────────────────────────────────────────────
-        case 'browser_get_page_markdown': {
-            const sel = args.selector || 'main, article, [role="main"], .content, body';
-            const maxLen = args.maxLength || 5000;
-            const markdown = await page.evaluate(({ selector, max }) => {
-                const root = document.querySelector(selector) || document.body;
-                const lines = [];
-                let charCount = 0;
-
-                function processNode(node) {
-                    if (charCount >= max) return;
-                    if (node.nodeType === Node.TEXT_NODE) {
-                        const text = node.textContent.trim();
-                        if (text) { lines.push(text); charCount += text.length; }
-                        return;
-                    }
-                    if (node.nodeType !== Node.ELEMENT_NODE) return;
-
-                    const tag = node.tagName.toLowerCase();
-                    const style = window.getComputedStyle(node);
-                    if (style.display === 'none' || style.visibility === 'hidden') return;
-                    if (['script', 'style', 'noscript'].includes(tag)) return;
-
-                    if (['h1','h2','h3','h4','h5','h6'].includes(tag)) {
-                        const level = parseInt(tag[1]);
-                        lines.push('\n' + '#'.repeat(level) + ' ' + node.textContent.trim());
-                        charCount += level + 1 + node.textContent.length;
-                    } else if (tag === 'p') {
-                        lines.push('\n' + node.textContent.trim());
-                        charCount += node.textContent.length;
-                    } else if (tag === 'li') {
-                        lines.push('- ' + node.textContent.trim());
-                        charCount += node.textContent.length + 2;
-                    } else if (tag === 'a' && node.href) {
-                        const text = node.textContent.trim();
-                        if (text) { lines.push('[' + text + '](' + node.href + ')'); charCount += text.length + node.href.length; }
-                    } else if (tag === 'img' && node.alt) {
-                        lines.push('![' + node.alt + '](' + node.src + ')');
-                        charCount += node.alt.length + node.src.length;
-                    } else if (tag === 'table') {
-                        const rows = Array.from(node.querySelectorAll('tr'));
-                        rows.forEach((row, i) => {
-                            const cells = Array.from(row.querySelectorAll('td, th')).map(c => c.textContent.trim());
-                            lines.push('| ' + cells.join(' | ') + ' |');
-                            if (i === 0) lines.push('| ' + cells.map(() => '---').join(' | ') + ' |');
-                        });
-                    } else {
-                        for (const child of node.childNodes) processNode(child);
-                        return;
-                    }
-                    if (!['table','h1','h2','h3','h4','h5','h6','p','li'].includes(tag)) {
-                        for (const child of node.childNodes) processNode(child);
-                    }
-                }
-
-                processNode(root);
-                return lines.join('\n').substring(0, max);
-            }, { selector: sel, max: maxLen });
-
-            return { content: [{ type: 'text', text: markdown || '(no content found)' }] };
-        }
-        case 'browser_get_accessibility_tree': {
-            const sel = args.selector;
-            const maxLen = args.maxLength || 5000;
-            const tree = await page.evaluate(({ selector, max }) => {
-                const root = selector ? document.querySelector(selector) : document.body;
-                if (!root) return '(element not found)';
-
-                const lines = [];
-                let charCount = 0;
-
-                function walk(el, depth) {
-                    if (charCount >= max) return;
-                    const role = el.getAttribute('role') || '';
-                    const name = el.getAttribute('aria-label') || '';
-                    const state = [];
-                    if (el.getAttribute('aria-hidden') === 'true') state.push('hidden');
-                    if (el.getAttribute('aria-disabled') === 'true') state.push('disabled');
-                    if (el.getAttribute('aria-expanded')) state.push('expanded=' + el.getAttribute('aria-expanded'));
-                    if (el.getAttribute('aria-checked')) state.push('checked=' + el.getAttribute('aria-checked'));
-                    if (el.getAttribute('aria-selected')) state.push('selected=' + el.getAttribute('aria-selected'));
-                    if (el.getAttribute('aria-current')) state.push('current=' + el.getAttribute('aria-current'));
-                    if (el.tagName === 'INPUT') state.push('type=' + el.type);
-                    if (el.tagName === 'A' && el.href) state.push('href=' + el.href.substring(0, 80));
-
-                    const tag = el.tagName.toLowerCase();
-                    const indent = '  '.repeat(depth);
-                    const stateStr = state.length ? ' [' + state.join(', ') + ']' : '';
-                    const nameStr = name ? ' "' + name + '"' : '';
-                    const text = el.childNodes.length === 1 && el.childNodes[0].nodeType === 3
-                        ? ' "' + el.textContent.trim().substring(0, 50) + '"' : '';
-
-                    lines.push(indent + tag + (role ? ' role=' + role : '') + (nameStr || text) + stateStr);
-                    charCount += lines[lines.length - 1].length;
-
-                    for (const child of el.children) walk(child, depth + 1);
-                }
-
-                walk(root, 0);
-                return lines.join('\n').substring(0, max);
-            }, { selector: sel, max: maxLen });
-
-            return { content: [{ type: 'text', text: tree || '(no tree found)' }] };
         }
 
         // ── New Tools: Network Mocking ──────────────────────────────────────────
@@ -3349,27 +3257,6 @@ async function handleToolCall(name, args) {
             return { content: [{ type: 'text', text: 'Uploaded ' + files.length + ' file(s) to ' + args.selector + '.' }] };
         }
 
-        // ── New Tools: Click Nth ────────────────────────────────────────────────
-        case 'browser_click_nth': {
-            const locator = page.locator(args.selector);
-            const count = await locator.count();
-            if (args.index < 0 || args.index >= count) {
-                return { content: [{ type: 'text', text: 'Index ' + args.index + ' out of range (found ' + count + ' matches).' }], isError: true };
-            }
-            if (AGENT_CONFIG.profile === 'stealth') {
-                const box = await locator.nth(args.index).boundingBox({ timeout: 5000 });
-                if (box) {
-                    const jitterX = (Math.random() - 0.5) * 4;
-                    const jitterY = (Math.random() - 0.5) * 4;
-                    await page.mouse.move(box.x + box.width / 2 + jitterX, box.y + box.height / 2 + jitterY, { steps: 5 });
-                    await page.waitForTimeout(Math.random() * 150 + 80);
-                }
-            }
-            await locator.nth(args.index).click({ timeout: 5000 });
-            recorder.record('click_nth', { selector: args.selector, index: args.index });
-            return { content: [{ type: 'text', text: 'Clicked ' + args.selector + ' at index ' + args.index + ' (of ' + count + ').' }] };
-        }
-
         // ── New Tools: Visual Debug ─────────────────────────────────────────────
         case 'browser_highlight': {
             const color = args.color || 'red';
@@ -3383,41 +3270,6 @@ async function handleToolCall(name, args) {
                 setTimeout(() => { el.style.outline = prev; }, dur);
             }, { sel: args.selector, clr: color, dur: duration });
             return { content: [{ type: 'text', text: 'Highlighted ' + args.selector + ' in ' + color + ' for ' + duration + 'ms.' }] };
-        }
-
-        // ── New Tools: Wait for Change ──────────────────────────────────────────
-        case 'browser_wait_for_change': {
-            const changeTimeout = args.timeout || 10000;
-            const attr = args.attribute || 'textContent';
-            try {
-                if (attr === 'textContent' || attr === 'innerText') {
-                    const initial = await page.locator(args.selector).first().textContent({ timeout: 3000 }) || '';
-                    await page.waitForFunction(
-                        ([sel, initialText, attribute]) => {
-                            const el = document.querySelector(sel);
-                            if (!el) return false;
-                            const current = attribute === 'innerText' ? el.innerText : el.textContent;
-                            return current !== initialText;
-                        },
-                        [args.selector, initial, attr],
-                        { timeout: changeTimeout }
-                    );
-                } else {
-                    const initial = await page.locator(args.selector).first().getAttribute(attr, { timeout: 3000 });
-                    await page.waitForFunction(
-                        ([sel, attributeName, initialValue]) => {
-                            const el = document.querySelector(sel);
-                            if (!el) return false;
-                            return el.getAttribute(attributeName) !== initialValue;
-                        },
-                        [args.selector, attr, initial],
-                        { timeout: changeTimeout }
-                    );
-                }
-                return { content: [{ type: 'text', text: args.selector + ' ' + attr + ' changed.' }] };
-            } catch (e) {
-                return { content: [{ type: 'text', text: 'Timeout waiting for ' + args.selector + ' ' + attr + ' to change.' }], isError: true };
-            }
         }
 
         // ── Emulation & Viewport ──────────────────────────────────────────────────

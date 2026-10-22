@@ -7,7 +7,7 @@ browser_get_state()                          // locate input: role="combobox" or
 browser_click(input_selector)
 browser_type(input_selector, query, delay=100)
 browser_press("Enter")
-browser_wait_for_selector(results_container) // or browser_wait_for_url(pattern)
+browser_wait(condition="selector", target=results_container) // or browser_wait(condition="url", target=pattern)
 browser_get_state()                          // verify result relevance
 ```
 
@@ -19,7 +19,7 @@ browser_fill_form(data={"#email": "me@example.com", "#password": "secret"})
 // OR structured form (mixed input types) — auto-detects date/number/email/tel/url/select/checkbox/radio/file/contenteditable:
 browser_fill_form(data={"#dob": "1990-01-15", "#qty": "3", "#email": "me@x.com"}, typeAware=true)
 // For per-field control with stealth timing:
-browser_scroll_to(field_selector)
+browser_scroll(mode="to", selector=field_selector)
 browser_type(field_selector, value, delay=120)
 // For dropdowns:
 browser_select(selector, value)
@@ -62,9 +62,9 @@ browser_health()
 ## Deep Content Extraction
 ```
 browser_get_state()                          // identify semantic headings and blocks
-browser_smart_scroll(steps=7)               // trigger lazy-loaded media/sections
-browser_get_text(selector)                  // targeted text extraction
-browser_get_html(selector)                  // preserve tables/lists structure
+browser_scroll(mode="lazy", steps=7)        // trigger lazy-loaded media/sections
+browser_get_content(format="text", selector=selector) // targeted text extraction
+browser_get_content(format="html", selector=selector) // preserve tables/lists structure
 browser_print_to_pdf()                      // permanent high-fidelity record
 ```
 
@@ -81,7 +81,7 @@ browser_download_click(ref=42)               // Intercepts the download and save
 // Step 1: dismiss any overlay
 browser_dismiss_popups()
 // Step 2: use coordinate-based ref click — pierces iframes and ignores CSS pointer-events blocks
-browser_click_ref(ref=42)
+browser_click(ref=42)
 // Step 3: JS override — when pointer events are suppressed
 browser_evaluate("document.querySelector(selector).click()")
 ```

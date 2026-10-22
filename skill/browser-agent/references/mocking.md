@@ -44,7 +44,7 @@ browser_clear_mocks()
 ```
 browser_mock_network(pattern="**/api/save*", body={ error: "Internal Server Error" }, status=500)
 browser_click("#save-button")
-browser_assert_visible(".error-toast")
+browser_assert(type="visible", target=".error-toast")
 browser_clear_mocks()
 ```
 
@@ -52,8 +52,8 @@ browser_clear_mocks()
 ```
 browser_mock_network(pattern="**/api/search*", body={ results: [], total: 0 })
 browser_type("#search-input", "nonexistent")
-browser_wait_for_change("#results")
-browser_get_text("#results")  // shows "No results found"
+browser_wait(condition="change", target="#results")
+browser_get_content(format="text", selector="#results")  // shows "No results found"
 browser_clear_mocks()
 ```
 
@@ -61,8 +61,8 @@ browser_clear_mocks()
 ```
 browser_mock_network(pattern="**/api/data*", body={ data: "loaded" })
 browser_click("#load-data")
-browser_assert_visible(".spinner")  // loading state visible
-browser_wait_for_change("#content")
+browser_assert(type="visible", target=".spinner")  // loading state visible
+browser_wait(condition="change", target="#content")
 browser_clear_mocks()
 ```
 
