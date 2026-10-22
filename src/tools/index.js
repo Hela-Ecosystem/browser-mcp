@@ -90,7 +90,7 @@ const TOOLS = [
     },
     {
         name: 'browser_search',
-        description: 'Search the web using DuckDuckGo (no CAPTCHA). Returns search results. Use this instead of navigating to Google directly.',
+        description: 'Restricted to visual browser workflows (not general factual lookups); prefer hela-enzyme google_search. Search the web using DuckDuckGo (no CAPTCHA). Returns search results.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -998,7 +998,7 @@ const TOOLS = [
     // ── Perception (read page content as structured data) ────────────────────
     {
         name: 'browser_get_page_markdown',
-        description: 'Extract page content as structured markdown (headings, lists, tables, links). Better than raw text for reading comprehension.',
+        description: 'Restricted to content that requires client-side JavaScript; prefer hela-enzyme extract_content for static pages. Extract page content as structured markdown (headings, lists, tables, links).',
         annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
