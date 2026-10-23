@@ -1005,7 +1005,19 @@ const TOOLS = [
     },
 ];
 
-function normalizeToolCall(name, args) {
+const LEGACY_ALIAS_NAMES = new Set([
+    'browser_click_text', 'browser_click_nth', 'browser_click_ref',
+    'browser_double_click', 'browser_right_click',
+    'browser_get_text', 'browser_get_html', 'browser_get_visible_text',
+    'browser_get_page_markdown', 'browser_get_accessibility_tree',
+    'browser_wait_until_stable', 'browser_wait_for_load',
+    'browser_wait_for_selector', 'browser_wait_for_url',
+    'browser_wait_for_navigation', 'browser_wait_for_change',
+    'browser_assert_visible', 'browser_assert_text', 'browser_assert_url',
+    'browser_scroll_to', 'browser_smart_scroll',
+]);
+
+function normalizeToolCallRaw(name, args) {
     switch (name) {
         case 'browser_click_text':
             return { name: 'browser_click', args: { ...args, text: args.text, type: args.type || 'any' } };
@@ -1052,6 +1064,15 @@ function normalizeToolCall(name, args) {
         default:
             return { name, args };
     }
+}
+
+function normalizeToolCall(name, args) {
+    const normalized = normalizeToolCallRaw(name, args);
+    if (!LEGACY_ALIAS_NAMES.has(name)) return normalized;
+    return {
+        ...normalized,
+        deprecated: `Deprecated tool "${name}" is now "${normalized.name}". The legacy alias remains available during the v1.2 transition.`,
+    };
 }
 
 async function clickTarget(page, args) {
@@ -3381,5 +3402,6 @@ async function handleToolCall(name, args = {}) {
 
 module.exports = {
     TOOLS,
-    handleToolCall
+    handleToolCall,
+    normalizeToolCall
 };

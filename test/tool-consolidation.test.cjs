@@ -25,7 +25,7 @@ const NEW_NAMES = [
   'browser_assert', 'browser_scroll',
 ];
 
-const { TOOLS, handleToolCall } = require('../src/tools');
+const { TOOLS, handleToolCall, normalizeToolCall } = require('../src/tools');
 
 let n = 0;
 const t = async (name, fn) => { await fn(); n++; console.log(`ok ${n} - ${name}`); };
@@ -117,6 +117,14 @@ const html = `<!doctype html>
     assert.equal(text(await handleToolCall('browser_scroll', { mode: 'to', x: 0, y: 0 })), 'Scrolled to target.');
     text(await handleToolCall('browser_scroll', { mode: 'to', selector: '#bottom' }));
     assert.equal(text(await handleToolCall('browser_scroll', { mode: 'lazy', steps: 2, delayMs: 10 })), 'Smart scroll completed (2 steps).');
+  });
+
+  await t('hidden aliases normalize with deprecation warnings', () => {
+    const alias = normalizeToolCall('browser_get_text', { selector: '#output' });
+    assert.equal(alias.name, 'browser_get_content');
+    assert.match(alias.deprecated, /Deprecated tool "browser_get_text" is now "browser_get_content"/);
+    const native = normalizeToolCall('browser_get_content', { format: 'text' });
+    assert.equal(native.deprecated, undefined);
   });
 
   await t('deprecated names remain callable through hidden aliases', async () => {

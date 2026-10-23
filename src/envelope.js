@@ -156,6 +156,32 @@ function withEnvelope(toolName, result) {
 }
 
 /**
+ * Append a deprecation warning: into envelope warnings when enabled, else as
+ * a visible trailing text block.
+ */
+function appendWarning(result, warning) {
+  if (!warning) return result;
+  if (isEnvelopeEnabled()) {
+    try {
+      const envelope = JSON.parse(result.content[0]?.text ?? '{}');
+      if (Array.isArray(envelope.warnings)) {
+        envelope.warnings.push(warning);
+        return {
+          ...result,
+          content: [{ type: 'text', text: JSON.stringify(envelope, null, 2) }],
+        };
+      }
+    } catch {
+      // Fall through to a visible warning block.
+    }
+  }
+  return {
+    ...result,
+    content: [...result.content, { type: 'text', text: `Warning: ${warning}` }],
+  };
+}
+
+/**
  * Error responder. Envelope off: legacy `{isError: true, content: [Error: msg]}`
  * shape preserved exactly (key order included). Envelope on: ok:false envelope.
  */
@@ -179,5 +205,6 @@ module.exports = {
   wrapResult,
   wrapError,
   withEnvelope,
+  appendWarning,
   errorResult,
 };

@@ -11,8 +11,8 @@ require('dotenv').config({ path: require('path').join(__dirname, '..', '.env'), 
 const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
-const { TOOLS, handleToolCall } = require('./tools');
-const { withEnvelope, errorResult } = require('./envelope');
+const { TOOLS, handleToolCall, normalizeToolCall } = require('./tools');
+const { withEnvelope, appendWarning, errorResult } = require('./envelope');
 const browser = require('./core/browser');
 
 const server = new Server(
@@ -30,7 +30,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     try {
         // P1-C1: HELA_ENVELOPE=true wraps in HelaResult, default is legacy raw.
-        return withEnvelope(name, await handleToolCall(name, args));
+        const normalized = normalizeToolCall(name, args ?? {});
+        const result = withEnvelope(name, await handleToolCall(normalized.name, normalized.args));
+        return appendWarning(result, normalized.deprecated);
     } catch (e) {
         return errorResult(name, e.message);
     }
