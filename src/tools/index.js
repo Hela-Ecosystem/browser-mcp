@@ -1612,7 +1612,9 @@ async function handleToolCall(name, args = {}) {
             try {
                 validateURL(args.url, { allowPrivate: allowPrivateIPs, allowAllSchemes });
                 const parsedUrl = new URL(args.url);
-                await resolveAndValidate(parsedUrl.hostname, { allowPrivate: allowPrivateIPs });
+                if (parsedUrl.protocol !== 'file:' && parsedUrl.protocol !== 'data:' && parsedUrl.protocol !== 'about:') {
+                    await resolveAndValidate(parsedUrl.hostname, { allowPrivate: allowPrivateIPs });
+                }
             } catch (e) {
                 return { content: [{ type: 'text', text: `URL blocked: ${e.message}` }], isError: true };
             }
@@ -1664,7 +1666,9 @@ async function handleToolCall(name, args = {}) {
                 try {
                     validateURL(args.url, { allowPrivate: allowPrivateIPs, allowAllSchemes });
                     const parsedUrl = new URL(args.url);
-                    await resolveAndValidate(parsedUrl.hostname, { allowPrivate: allowPrivateIPs });
+                    if (parsedUrl.protocol !== 'file:' && parsedUrl.protocol !== 'data:' && parsedUrl.protocol !== 'about:') {
+                        await resolveAndValidate(parsedUrl.hostname, { allowPrivate: allowPrivateIPs });
+                    }
                 } catch (e) {
                     return { content: [{ type: 'text', text: `URL blocked: ${e.message}` }], isError: true };
                 }

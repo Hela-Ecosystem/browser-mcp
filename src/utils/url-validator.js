@@ -98,6 +98,9 @@ function validateURL(urlStr, { allowPrivate = false, allowAllSchemes = false } =
 
     const hostname = parsed.hostname;
     if (!hostname) {
+        if (allowAllSchemes && (scheme === 'file' || scheme === 'data' || scheme === 'about')) {
+            return;
+        }
         throw new Error('Missing hostname in URL');
     }
 
