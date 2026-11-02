@@ -32,6 +32,8 @@ const CONFIG = {
     browserlessUrl: process.env.BROWSERLESS_URL || process.env.BROWSER_WS_ENDPOINT || process.env.BROWSER_URL || undefined,
     browserlessToken: process.env.BROWSERLESS_TOKEN || undefined,
     browserlessFallbackLocal: process.env.BROWSERLESS_FALLBACK_LOCAL !== 'false',
+    browserlessConnectTimeoutMs: Math.max(1000, parseInt(process.env.BROWSERLESS_CONNECT_TIMEOUT_MS || '5000', 10)),
+    browserlessRetries: Math.max(0, parseInt(process.env.BROWSERLESS_RETRIES || '1', 10)),
 };
 
 // Normalize any HTTP/HTTPS/WS/WSS Browserless endpoint into a valid CDP WebSocket URL
@@ -114,10 +116,11 @@ async function launchWithRetry() {
         const masked = remoteEndpoint.replace(/token=([^&]+)/g, 'token=***');
         console.error(`[Browser] Using remote Browserless instance: ${masked}`);
         let lastErr;
-        for (let attempt = 0; attempt <= CONFIG.launchRetries; attempt++) {
+        const maxAttempts = CONFIG.browserlessRetries;
+        for (let attempt = 0; attempt <= maxAttempts; attempt++) {
             try {
                 const remoteBrowser = await chromium.connectOverCDP(remoteEndpoint, {
-                    timeout: 30000,
+                    timeout: CONFIG.browserlessConnectTimeoutMs,
                 });
                 const ctx = remoteBrowser.contexts()[0] || await remoteBrowser.newContext({
                     viewport: CONFIG.viewport,
@@ -135,8 +138,8 @@ async function launchWithRetry() {
                 return ctx;
             } catch (e) {
                 lastErr = e;
-                const total = CONFIG.launchRetries + 1;
-                if (attempt < CONFIG.launchRetries) {
+                const total = maxAttempts + 1;
+                if (attempt < maxAttempts) {
                     const wait = CONFIG.launchBackoffMs * Math.pow(2, attempt);
                     console.error(`[Browser] Remote connection attempt ${attempt + 1}/${total} failed: ${e.message}. Retrying in ${wait}ms...`);
                     await new Promise(r => setTimeout(r, wait));
@@ -145,9 +148,9 @@ async function launchWithRetry() {
         }
 
         if (CONFIG.browserlessFallbackLocal) {
-            console.error(`[Browser] Remote Browserless failed after ${CONFIG.launchRetries + 1} attempt(s): ${lastErr?.message}. Falling back to local Chromium persistent context...`);
+            console.error(`[Browser] Remote Browserless failed after ${maxAttempts + 1} attempt(s): ${lastErr?.message}. Falling back to local Chromium persistent context...`);
         } else {
-            throw new Error(`Remote Browserless connection failed after ${CONFIG.launchRetries + 1} attempt(s): ${lastErr?.message}`);
+            throw new Error(`Remote Browserless connection failed after ${maxAttempts + 1} attempt(s): ${lastErr?.message}`);
         }
     }
 
