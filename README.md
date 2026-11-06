@@ -1,5 +1,9 @@
 # Browser-Agent
 
+<!-- hela:version:start -->
+**MCP server:** `hela-cytosol` · **Version:** `3.0.0` · **Canonical tools:** 73. [Current tool reference](docs/TOOLS.md).
+<!-- hela:version:end -->
+
 
 > **Part of the [HeLa MCP Ecosystem](https://github.com/Hela-Ecosystem/hela-mcp-ecosystem)** — This server is **HeLa Cytosol (`hela-cytosol`)** — the *Browser Automation* component of the HeLa cellular architecture. See the [ecosystem docs](https://github.com/Hela-Ecosystem/hela-mcp-ecosystem) for profiles, workflows, and multi-client setup.
 
@@ -247,7 +251,7 @@ browser_clear_mocks()
 ## Installation
 
 ### Prerequisites
-- Node.js 18.x or higher
+- Node.js 22 LTS is the tested ecosystem environment.
 - npm
 
 ### Setup
