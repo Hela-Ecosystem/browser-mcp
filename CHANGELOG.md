@@ -2,6 +2,11 @@
 
 All notable changes to this project.
 
+## [Unreleased]
+
+### Fixed
+- Keep the standalone Mirage setup command usable on Linux, macOS, and native Windows by discovering Python cross-platform and creating the managed virtual environment in the repository data directory.
+
 ## [3.2.0] - 2026-11-13
 
 ### Added
