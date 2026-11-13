@@ -14,9 +14,10 @@ const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontext
 const { TOOLS, handleToolCall, normalizeToolCall } = require('./tools');
 const { withEnvelope, appendWarning, errorResult } = require('./envelope');
 const browser = require('./core/browser');
+const mirage = require('./core/mirage');
 
 const server = new Server(
-    { name: 'general-browser-agent', version: '3.0.1' },
+    { name: 'general-browser-agent', version: '3.1.0' },
     { capabilities: { tools: {} } }
 );
 
@@ -50,6 +51,7 @@ async function gracefulShutdown(signal) {
     try {
         await browser.saveState(); // Ensure last state is saved before exit
         await browser.closeBrowser();
+        await mirage.close();
         console.error('[MCP] Browser context cleanly closed.');
     } catch (e) {
         console.error(`[MCP] Error during shutdown: ${e.message}`);

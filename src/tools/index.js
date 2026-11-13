@@ -18,6 +18,7 @@ const {
     healthCheck,
 } = require('../core/browser');
 const { RecaptchaSolver } = require('../core/recaptcha');
+const mirage = require('../core/mirage');
 const { captureState, observeInteractable, getElementByRef } = require('../core/state');
 const cache = require('../core/cache');
 const recorder = require('../core/recorder');
@@ -594,6 +595,28 @@ const TOOLS = [
                 language: { type: 'string', default: 'eng', description: 'Tesseract language code (eng, ind, etc.)' },
                 preprocess: { type: 'string', enum: ['none', 'threshold', 'grayscale', 'sharpen'], default: 'threshold', description: 'Image preprocessing for better OCR accuracy.' },
                 returnImage: { type: 'boolean', default: false, description: 'Also return the preprocessed image as base64.' },
+            },
+        },
+    },
+    {
+        name: 'browser_visual_analyze',
+        description: 'Analyze the current page or a selected element with HeLa Cytosol visual intelligence. Mirage downloads and caches its local model on first use, then returns scene, object, text, relation, mask, or structured extraction results.',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+            type: 'object',
+            properties: {
+                operation: { type: 'string', enum: ['describe', 'extract'], default: 'describe', description: 'Describe the image or extract values matching schema.' },
+                selector: { type: 'string', description: 'Optional CSS selector to analyze only that element. Without it, analyze the current viewport.' },
+                sections: { type: 'array', items: { type: 'string' }, description: 'Describe sections to return, such as scene, objects, text, relations, or reasoning.' },
+                fields: { type: 'array', items: { type: 'string' }, description: 'Object fields to return, such as bbox, score, mask, or description.' },
+                schema: { type: 'object', description: 'Non-empty extraction schema used when operation=extract.' },
+                language: { type: 'string', description: 'Optional output language code.' },
+                maskFormat: { type: 'string', description: 'Optional mask output format, such as polygons or bitmap.' },
+                conf: { type: 'number', minimum: 0, maximum: 1, description: 'Minimum object confidence.' },
+                textConf: { type: 'number', minimum: 0, maximum: 1, description: 'Minimum OCR confidence.' },
+                maxObjects: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum detected objects.' },
+                maxTextLines: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum OCR text regions.' },
+                maxTokens: { type: 'integer', minimum: 1, maximum: 4096, description: 'Maximum generated output tokens.' },
             },
         },
     },
@@ -2405,6 +2428,35 @@ async function handleToolCall(name, args = {}) {
             return { content: [{ type: 'text', text: result.text, data: result }] };
         }
 
+        case 'browser_visual_analyze': {
+            const operation = args.operation || 'describe';
+            if (operation === 'extract' && (!args.schema || typeof args.schema !== 'object' || Array.isArray(args.schema) || !Object.keys(args.schema).length)) {
+                return { content: [{ type: 'text', text: 'Mirage extraction requires a non-empty schema object.' }], isError: true };
+            }
+
+            const imageBuffer = args.selector
+                ? await page.locator(args.selector).first().screenshot({ type: 'png' })
+                : await page.screenshot({ type: 'png' });
+            try {
+                const result = await mirage.analyze(imageBuffer, {
+                    operation,
+                    sections: args.sections,
+                    fields: args.fields,
+                    schema: args.schema,
+                    language: args.language,
+                    maskFormat: args.maskFormat,
+                    conf: args.conf,
+                    textConf: args.textConf,
+                    maxObjects: args.maxObjects,
+                    maxTextLines: args.maxTextLines,
+                    maxTokens: args.maxTokens,
+                });
+                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2), data: result }] };
+            } catch (error) {
+                return { content: [{ type: 'text', text: `Mirage visual analysis failed: ${error.message}` }], isError: true };
+            }
+        }
+
         // ── Phase 3: Macro Recording ─────────────────────────────────────────
         // Macros record browser actions and replay them later.
         // Recording works by tagging the page — every browser_* call gets logged
@@ -2841,6 +2893,7 @@ async function handleToolCall(name, args = {}) {
 
         case 'browser_close': {
             await closeBrowser();
+            await mirage.close();
             return { content: [{ type: 'text', text: 'Browser session closed.' }] };
         }
         case 'browser_set_agent_profile': {

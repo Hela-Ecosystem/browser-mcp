@@ -23,6 +23,10 @@ fi
 echo "Installing npm dependencies..."
 npm install --production
 
+# Install the managed Python bridge for Cytosol visual intelligence.
+echo "Installing Cytosol Mirage runtime..."
+npm run setup:mirage
+
 # 3. Playwright Setup
 echo "Installing Playwright Chromium engine..."
 npx playwright install chromium
