@@ -1,6 +1,6 @@
 # HeLa Cytosol: canonical tools
 
-Server version **3.0.0**. Generated from the ecosystem schema catalog; regenerate with `npm run docs:generate -- --servers` in the ecosystem checkout.
+Server version **3.1.0**. Generated from the ecosystem schema catalog; regenerate with `npm run docs:generate -- --servers` in the ecosystem checkout.
 
 Only names advertised by `tools/list` are listed here. Older aliases in migration examples are not additional tools. Runtime namespace prefixes are optional and do not change these server-local names.
 
@@ -301,6 +301,10 @@ Uncheck a checkbox.
 ## `browser_upload`
 
 Upload a file to an <input type="file"> element. Provide absolute file path(s).
+
+## `browser_visual_analyze`
+
+Analyze the current page or a selected element with HeLa Cytosol visual intelligence. Mirage downloads and caches its local model on first use, then returns scene, object, text, relation, mask, or structured extraction results.
 
 ## `browser_wait`
 
