@@ -9,6 +9,8 @@
 
 A modular, production-ready browser automation agent implemented as a Model Context Protocol (MCP) server. Powered by Playwright, it provides **75 tools** for human-like web interaction, state analysis, automated navigation, dedicated image perception, and network-level control.
 
+Distributed under the MIT License; see [LICENSE](LICENSE).
+
 ## Features
 
 - **Semantic Interaction**: Click by text, selector, `ref`, or nth match with `browser_click`, and fill entire forms (`browser_fill_form`) with single commands.
