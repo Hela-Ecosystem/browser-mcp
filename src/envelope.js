@@ -32,6 +32,7 @@ const READ_ONLY_PREFIXES = [
   'browser_state_diff',
   'browser_ocr',
   'browser_visual_',
+  'browser_image_',
   'browser_intercept_list',
   'browser_wait_',
 ];

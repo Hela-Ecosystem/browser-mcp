@@ -17,7 +17,7 @@ const browser = require('./core/browser');
 const mirage = require('./core/mirage');
 
 const server = new Server(
-    { name: 'general-browser-agent', version: '3.1.0' },
+    { name: 'general-browser-agent', version: '3.2.0' },
     { capabilities: { tools: {} } }
 );
 

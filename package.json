@@ -1,6 +1,6 @@
 {
   "name": "general-browser-agent-mcp",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "General-purpose browser automation agent exposed as an MCP server",
   "main": "src/server.js",
   "dependencies": {
@@ -14,7 +14,7 @@
     "mcp": "node src/server.js",
     "setup:mirage": "node scripts/setup-mirage.mjs",
     "build": "echo 'No build step required for JS-only server'",
-    "test": "node -r dotenv/config test/browser-envelope.test.cjs && node -r dotenv/config test/cytosol-safety.test.cjs && node -r dotenv/config test/tool-consolidation.test.cjs",
+    "test": "node -r dotenv/config test/browser-envelope.test.cjs && node -r dotenv/config test/cytosol-safety.test.cjs && node -r dotenv/config test/tool-consolidation.test.cjs && node test/image-input.test.cjs",
     "clean": "echo 'Nothing to clean'"
   }
 }

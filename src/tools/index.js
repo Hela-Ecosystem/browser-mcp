@@ -27,6 +27,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { validateURL, resolveAndValidate } = require('../utils/url-validator');
 const { checkOutputPath, safeFilename } = require('../utils/path-guard');
+const { resolveImageInput } = require('../core/image-input');
 
 /**
  * P1-C2/C3: capture provenance + artifact addressing for file-producing tools.
@@ -607,6 +608,30 @@ const TOOLS = [
             properties: {
                 operation: { type: 'string', enum: ['describe', 'extract'], default: 'describe', description: 'Describe the image or extract values matching schema.' },
                 selector: { type: 'string', description: 'Optional CSS selector to analyze only that element. Without it, analyze the current viewport.' },
+                sections: { type: 'array', items: { type: 'string' }, description: 'Describe sections to return, such as scene, objects, text, relations, or reasoning.' },
+                fields: { type: 'array', items: { type: 'string' }, description: 'Object fields to return, such as bbox, score, mask, or description.' },
+                schema: { type: 'object', description: 'Non-empty extraction schema used when operation=extract.' },
+                language: { type: 'string', description: 'Optional output language code.' },
+                maskFormat: { type: 'string', description: 'Optional mask output format, such as polygons or bitmap.' },
+                conf: { type: 'number', minimum: 0, maximum: 1, description: 'Minimum object confidence.' },
+                textConf: { type: 'number', minimum: 0, maximum: 1, description: 'Minimum OCR confidence.' },
+                maxObjects: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum detected objects.' },
+                maxTextLines: { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum OCR text regions.' },
+                maxTokens: { type: 'integer', minimum: 1, maximum: 4096, description: 'Maximum generated output tokens.' },
+            },
+        },
+    },
+    {
+        name: 'browser_image_analyze',
+        description: 'Analyze a dedicated image with HeLa Cytosol visual intelligence. Provide exactly one imagePath, imageUrl, or imageBase64. Mirage returns VLM scene understanding, OCR, object detection, segmentation, relations, or schema-based decisions without requiring an active browser page.',
+        annotations: { readOnlyHint: true },
+        inputSchema: {
+            type: 'object',
+            properties: {
+                imagePath: { type: 'string', description: 'Local image path inside the configured workspace roots.' },
+                imageUrl: { type: 'string', description: 'HTTP(S) image URL. Private hosts, credentials, unsafe schemes, and excessive redirects are rejected.' },
+                imageBase64: { type: 'string', description: 'Base64 image bytes, optionally prefixed with a data:image/...;base64, header.' },
+                operation: { type: 'string', enum: ['describe', 'extract'], default: 'describe', description: 'Describe the image or extract values matching schema.' },
                 sections: { type: 'array', items: { type: 'string' }, description: 'Describe sections to return, such as scene, objects, text, relations, or reasoning.' },
                 fields: { type: 'array', items: { type: 'string' }, description: 'Object fields to return, such as bbox, score, mask, or description.' },
                 schema: { type: 'object', description: 'Non-empty extraction schema used when operation=extract.' },
@@ -1626,7 +1651,7 @@ async function scrollPage(page, args) {
 
 async function handleToolCall(name, args = {}) {
     ({ name, args } = normalizeToolCall(name, args));
-    const page = await getPage();
+    const page = name === 'browser_image_analyze' ? null : await getPage();
 
     switch (name) {
         // Navigation
@@ -2454,6 +2479,32 @@ async function handleToolCall(name, args = {}) {
                 return { content: [{ type: 'text', text: JSON.stringify(result, null, 2), data: result }] };
             } catch (error) {
                 return { content: [{ type: 'text', text: `Mirage visual analysis failed: ${error.message}` }], isError: true };
+            }
+        }
+
+        case 'browser_image_analyze': {
+            const operation = args.operation || 'describe';
+            if (operation === 'extract' && (!args.schema || typeof args.schema !== 'object' || Array.isArray(args.schema) || !Object.keys(args.schema).length)) {
+                return { content: [{ type: 'text', text: 'Mirage extraction requires a non-empty schema object.' }], isError: true };
+            }
+            try {
+                const imageBuffer = await resolveImageInput(args);
+                const result = await mirage.analyze(imageBuffer, {
+                    operation,
+                    sections: args.sections,
+                    fields: args.fields,
+                    schema: args.schema,
+                    language: args.language,
+                    maskFormat: args.maskFormat,
+                    conf: args.conf,
+                    textConf: args.textConf,
+                    maxObjects: args.maxObjects,
+                    maxTextLines: args.maxTextLines,
+                    maxTokens: args.maxTokens,
+                });
+                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2), data: result }] };
+            } catch (error) {
+                return { content: [{ type: 'text', text: `Mirage image analysis failed: ${error.message}` }], isError: true };
             }
         }
 

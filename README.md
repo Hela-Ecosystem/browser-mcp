@@ -1,13 +1,13 @@
 # Browser-Agent
 
 <!-- hela:version:start -->
-**MCP server:** `hela-cytosol` · **Version:** `3.1.0` · **Canonical tools:** 74. [Current tool reference](docs/TOOLS.md).
+**MCP server:** `hela-cytosol` · **Version:** `3.2.0` · **Canonical tools:** 75. [Current tool reference](docs/TOOLS.md).
 <!-- hela:version:end -->
 
 
 > **Part of the [HeLa MCP Ecosystem](https://github.com/Hela-Ecosystem/hela-mcp-ecosystem)** — This server is **HeLa Cytosol (`hela-cytosol`)** — the *Browser Automation* component of the HeLa cellular architecture. See the [ecosystem docs](https://github.com/Hela-Ecosystem/hela-mcp-ecosystem) for profiles, workflows, and multi-client setup.
 
-A modular, production-ready browser automation agent implemented as a Model Context Protocol (MCP) server. Powered by Playwright, it provides **74 tools** for human-like web interaction, state analysis, automated navigation, visual perception, and network-level control.
+A modular, production-ready browser automation agent implemented as a Model Context Protocol (MCP) server. Powered by Playwright, it provides **75 tools** for human-like web interaction, state analysis, automated navigation, dedicated image perception, and network-level control.
 
 ## Features
 
@@ -30,6 +30,7 @@ A modular, production-ready browser automation agent implemented as a Model Cont
 - **Batch Automation**: Answer entire quizzes in one tool call; batch form filling with index-based selection.
 - **OCR**: Extract text from code screenshots and images via Tesseract.js with preprocessing.
 - **Visual Intelligence**: Analyze the current page or selected elements with local Mirage inference for scene description, object detection, OCR, segmentation, relations, and structured extraction. The model downloads once on first use and is cached locally.
+- **Dedicated Image Intelligence**: Analyze a local image path, HTTP(S) image URL, or base64 image directly with `browser_image_analyze`, without launching a browser page.
 - **Macro Recording & Replay**: Record workflows once, replay them with different parameters.
 - **Parallel Execution**: Run actions on multiple named pages concurrently.
 - **Assertions**: Verify outcomes without breaking flow — `browser_assert` checks elements, visibility, text, URLs, or JavaScript expressions and returns PASS/FAIL.
@@ -237,6 +238,7 @@ browser_clear_mocks()
 |------|-------------|
 | `browser_ocr` | Extract text from screenshots/code via Tesseract.js with preprocessing (threshold, grayscale, sharpen) |
 | `browser_visual_analyze` | Analyze the current page or selected element with local Mirage visual intelligence; supports description and schema extraction |
+| `browser_image_analyze` | Analyze a local path, HTTP(S) URL, or base64 image with Mirage VLM, OCR, detection, segmentation, relations, and structured decisions |
 | `browser_record_macro` | Start/stop/clear/export macro recordings as Playwright tests or JSON |
 | `browser_replay_macro` | Replay recorded macros or action arrays with speed control and dry-run |
 | `browser_parallel_execute` | Run actions on multiple named pages concurrently |

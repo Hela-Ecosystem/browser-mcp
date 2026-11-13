@@ -92,8 +92,21 @@ function checkOutputPath(targetPath) {
     return resolved;
 }
 
+function checkInputPath(targetPath) {
+    const resolved = checkOutputPath(targetPath);
+    let stat;
+    try {
+        stat = fs.statSync(resolved);
+    } catch {
+        throw new Error(`Input file does not exist: ${targetPath}`);
+    }
+    if (!stat.isFile()) throw new Error(`Input path is not a regular file: ${targetPath}`);
+    return resolved;
+}
+
 module.exports = {
     checkOutputPath,
+    checkInputPath,
     safeFilename,
     PolicyDeniedError,
     getWorkspaceRoots,

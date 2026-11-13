@@ -22,7 +22,7 @@ const OLD_NAMES = [
 
 const NEW_NAMES = [
   'browser_click', 'browser_get_content', 'browser_wait',
-  'browser_assert', 'browser_scroll', 'browser_visual_analyze',
+  'browser_assert', 'browser_scroll', 'browser_visual_analyze', 'browser_image_analyze',
 ];
 
 const { TOOLS, handleToolCall, normalizeToolCall } = require('../src/tools');
@@ -60,8 +60,8 @@ const html = `<!doctype html>
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/`;
 
-  await t('registry advertises 74 tools with visual perception', () => {
-    assert.equal(TOOLS.length, 74);
+  await t('registry advertises 75 tools with dedicated image perception', () => {
+    assert.equal(TOOLS.length, 75);
     const names = TOOLS.map((tool) => tool.name);
     assert.equal(new Set(names).size, names.length);
     for (const name of NEW_NAMES) assert.ok(names.includes(name), name);
@@ -69,7 +69,7 @@ const html = `<!doctype html>
   });
 
   await t('consolidated tools declare the intended side effects', () => {
-    for (const name of ['browser_get_content', 'browser_wait', 'browser_assert', 'browser_visual_analyze']) {
+    for (const name of ['browser_get_content', 'browser_wait', 'browser_assert', 'browser_visual_analyze', 'browser_image_analyze']) {
       assert.deepEqual(sideEffectsFor(name), [], name);
     }
     assert.deepEqual(sideEffectsFor('browser_click'), ['browser-act']);

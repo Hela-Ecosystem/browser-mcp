@@ -2,6 +2,13 @@
 
 All notable changes to this project.
 
+## [3.2.0] - 2026-11-13
+
+### Added
+- Added `browser_image_analyze` for dedicated image analysis from validated local paths, safe HTTP(S) URLs, or base64 image data.
+- Added VLM scene understanding, OCR, object detection, segmentation, spatial relations, and schema-based decisions without requiring an active browser page.
+- Added image size, redirect, content-type, workspace, and SSRF protections for direct image inputs.
+
 ## [3.1.0] - 2026-11-13
 
 ### Added
