@@ -2,6 +2,14 @@
 
 All notable changes to this project.
 
+## [3.0.1] - 2026-11-13
+
+### Fixed
+- Tuned CDP timeouts and added support for local file schemes.
+
+### Changed
+- Updated runtime dependencies and synchronized canonical documentation.
+
 ## [3.0.0] - 2026-10-31
 
 ### Changed

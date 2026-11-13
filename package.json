@@ -1,6 +1,6 @@
 {
   "name": "general-browser-agent-mcp",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "General-purpose browser automation agent exposed as an MCP server",
   "main": "src/server.js",
   "dependencies": {

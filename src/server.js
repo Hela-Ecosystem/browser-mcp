@@ -16,7 +16,7 @@ const { withEnvelope, appendWarning, errorResult } = require('./envelope');
 const browser = require('./core/browser');
 
 const server = new Server(
-    { name: 'general-browser-agent', version: '3.0.0' },
+    { name: 'general-browser-agent', version: '3.0.1' },
     { capabilities: { tools: {} } }
 );
 

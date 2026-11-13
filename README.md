@@ -1,7 +1,7 @@
 # Browser-Agent
 
 <!-- hela:version:start -->
-**MCP server:** `hela-cytosol` · **Version:** `3.0.0` · **Canonical tools:** 73. [Current tool reference](docs/TOOLS.md).
+**MCP server:** `hela-cytosol` · **Version:** `3.0.1` · **Canonical tools:** 73. [Current tool reference](docs/TOOLS.md).
 <!-- hela:version:end -->
 
 
