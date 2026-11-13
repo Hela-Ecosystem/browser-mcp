@@ -1,6 +1,6 @@
 # HeLa Cytosol: canonical tools
 
-Server version **3.1.0**. Generated from the ecosystem schema catalog; regenerate with `npm run docs:generate -- --servers` in the ecosystem checkout.
+Server version **3.2.0**. Generated from the ecosystem schema catalog; regenerate with `npm run docs:generate -- --servers` in the ecosystem checkout.
 
 Only names advertised by `tools/list` are listed here. Older aliases in migration examples are not additional tools. Runtime namespace prefixes are optional and do not change these server-local names.
 
@@ -149,6 +149,10 @@ Draw a colored border around an element for visual debugging. Useful before taki
 ## `browser_hover`
 
 Hover over an element.
+
+## `browser_image_analyze`
+
+Analyze a dedicated image with HeLa Cytosol visual intelligence. Provide exactly one imagePath, imageUrl, or imageBase64. Mirage returns VLM scene understanding, OCR, object detection, segmentation, relations, or schema-based decisions without requiring an active browser page.
 
 ## `browser_intercept`
 
