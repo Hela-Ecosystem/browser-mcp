@@ -1,7 +1,7 @@
 # Browser-Agent
 
 <!-- hela:version:start -->
-**MCP server:** `hela-cytosol` · **Version:** `3.2.0` · **Canonical tools:** 75. [Current tool reference](docs/TOOLS.md).
+**MCP server:** `hela-cytosol` · **Version:** `3.2.2` · **Canonical tools:** 75. [Current tool reference](docs/TOOLS.md).
 <!-- hela:version:end -->
 
 
@@ -327,7 +327,7 @@ Register in your MCP client config:
 | `BROWSERLESS_FALLBACK_LOCAL` | `true` | When `true`, automatically falls back to launching local Chromium if the remote Browserless connection fails. |
 | `CHROMIUM_EXECUTABLE_PATH` | Playwright bundled | Path to a dedicated Chromium binary. If set, Playwright uses this instead of its bundled Chromium. |
 | `CHROMIUM_CHANNEL` | — | Playwright channel hint (e.g. `chromium`, `chrome`, `chrome-beta`). Ignored if `CHROMIUM_EXECUTABLE_PATH` is set. |
-| `BROWSER_HEADLESS` | `false` | Set to `true` for headless operation (CI / production). |
+| `BROWSER_HEADLESS` | auto | Defaults to headless when `DISPLAY` is unavailable; set `true` or `false` to override. |
 | `BROWSER_LAUNCH_RETRIES` | `3` | Number of retries on browser launch failure. |
 | `BROWSER_LAUNCH_BACKOFF` | `1000` | Base delay (ms) between launch retries; doubled each retry. |
 | `ALLOW_PRIVATE_IPS` | `false` | Allow navigation to private/internal IPs (localhost, 192.168.x, etc.) — SSRF protection is enabled by default. |

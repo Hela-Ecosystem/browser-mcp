@@ -1,7 +1,7 @@
-## [3.2.2] - 2026-11-18
+## [3.2.3] - 2026-11-18
 
-### Fixed
-- Centralize the advertised MCP server version and guard it against package.json drift.
+### Changed
+- `BROWSER_HEADLESS` now defaults to automatic: headless when `DISPLAY` is unavailable (services, Wayland bridges, CI), headful when a display exists. An explicit `true`/`false` still wins. Previously the default was always headful, which crashed Playwright in display-less service processes.
 
 ## [3.2.1] - 2026-11-18
 

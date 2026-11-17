@@ -18,10 +18,23 @@ const _sourceMapCache = new Map();
 
 // Configuration with sensible defaults — all overridable via environment variables.
 // Using a persistent context (user data dir) instead of incognito for session persistence.
+/**
+ * Resolve headless mode.
+ *
+ * Playwright's headed Chromium needs an X display, but service processes do not
+ * inherit DISPLAY. An explicit BROWSER_HEADLESS wins; an empty value is treated
+ * as unset so a stray `BROWSER_HEADLESS=` does not force a headful launch.
+ */
+function resolveHeadless(env = process.env) {
+    const raw = (env.BROWSER_HEADLESS || '').trim().toLowerCase();
+    if (raw === '') return !env.DISPLAY;
+    return ['true', '1', 'yes', 'on'].includes(raw);
+}
+
 const CONFIG = {
     userDataDir: path.join(__dirname, '../../user_data'),
     viewport: { width: 1280, height: 720 },
-    headless: process.env.BROWSER_HEADLESS === 'true' || process.env.BROWSER_HEADLESS === '1',
+    headless: resolveHeadless(),
     launchRetries: Math.max(0, parseInt(process.env.BROWSER_LAUNCH_RETRIES || '3', 10)),
     launchBackoffMs: Math.max(100, parseInt(process.env.BROWSER_LAUNCH_BACKOFF || '1000', 10)),
     executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || undefined,
@@ -640,6 +653,7 @@ async function healthCheck() {
 }
 
 module.exports = {
+    resolveHeadless,
     getPage,
     getBrowserContext,
     closeBrowser,
