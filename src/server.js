@@ -15,9 +15,10 @@ const { TOOLS, handleToolCall, normalizeToolCall } = require('./tools');
 const { withEnvelope, appendWarning, errorResult } = require('./envelope');
 const browser = require('./core/browser');
 const mirage = require('./core/mirage');
+const { SERVER_VERSION } = require('./version');
 
 const server = new Server(
-    { name: 'general-browser-agent', version: '3.2.1' },
+    { name: 'general-browser-agent', version: SERVER_VERSION },
     { capabilities: { tools: {} } }
 );
 
