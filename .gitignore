@@ -25,6 +25,7 @@
 !/install.sh
 !/uninstall.sh
 !/jsconfig.json
+!/scripts/verify-browserless.mjs
 !/package.json
 !/package-lock.json
 !/pnpm-lock.yaml

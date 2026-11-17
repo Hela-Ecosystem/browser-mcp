@@ -1,3 +1,11 @@
+## [3.2.1] - 2026-11-18
+
+### Added
+- `npm run test:browserless` validates a remote Browserless instance end to end with local fallback disabled: connect, navigate, screenshot, read, evaluate, second tab, tab list. A pass cannot be the local Chromium taking over.
+
+### Known limitation
+- The remote CDP context can be torn down between calls by the server (observed as `Target page, context or browser has been closed` and a blank page on the next read). `browser_health` reports the state, but the client does not reconnect automatically yet.
+
 # Changelog
 
 All notable changes to this project.
