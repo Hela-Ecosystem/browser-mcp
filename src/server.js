@@ -33,7 +33,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
         // P1-C1: HELA_ENVELOPE=true wraps in HelaResult, default is legacy raw.
         const normalized = normalizeToolCall(name, args ?? {});
-        const result = withEnvelope(name, await handleToolCall(normalized.name, normalized.args));
+        const result = withEnvelope(name, await browser.executeWithRecovery(
+            () => handleToolCall(normalized.name, normalized.args),
+            normalized.name !== 'browser_image_analyze',
+        ));
         return appendWarning(result, normalized.deprecated);
     } catch (e) {
         return errorResult(name, e.message);

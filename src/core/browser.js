@@ -11,6 +11,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { SourceMapConsumer } = require('source-map');
+const { executeWithContextRecovery } = require('./context-recovery');
 
 // Lazy-loaded source map cache — maps URL → SourceMapConsumer for error stack trace mapping.
 // Only loaded when needed to avoid memory overhead.
@@ -251,6 +252,27 @@ async function getBrowserContext() {
         setupPage(activePage);
     }
     return browserContext;
+}
+
+async function resetBrowserContext() {
+    const oldContext = browserContext;
+    browserContext = null;
+    activePage = null;
+    namedPages.clear();
+    try { await oldContext?.close(); } catch (_) {}
+    await getBrowserContext();
+}
+
+async function executeWithRecovery(operation, checkBlankPage = true) {
+    return executeWithContextRecovery(
+        operation,
+        resetBrowserContext,
+        async () => {
+            if (!checkBlankPage) return false;
+            const page = await getPage();
+            return await page.title() === 'no-title';
+        },
+    );
 }
 
 async function ensureUserDataDir() {
@@ -656,6 +678,7 @@ module.exports = {
     resolveHeadless,
     getPage,
     getBrowserContext,
+    executeWithRecovery,
     closeBrowser,
     listPages,
     switchPage,

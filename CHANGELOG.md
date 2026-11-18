@@ -1,12 +1,20 @@
-## [3.2.3] - 2026-11-18
+## [3.2.5] - 2026-11-19
 
-### Changed
-- `BROWSER_HEADLESS` now defaults to automatic: headless when `DISPLAY` is unavailable (services, Wayland bridges, CI), headful when a display exists. An explicit `true`/`false` still wins. Previously the default was always headful, which crashed Playwright in display-less service processes.
+### Fixed
+- Automatically reconnect a closed Browserless/CDP context and retry the interrupted tool once. Recovery is limited to the closed-context error and the explicit `no-title` blank-page state.
+
+### Known limitation
+- Browserless can still close a context during an operation; the client retries that operation only once. A second failure is returned to the caller.
 
 ## [3.2.4] - 2026-11-19
 
 ### Changed
 - npm audit fix clears a critical advisory plus eight others; browser behaviour unchanged.
+
+## [3.2.3] - 2026-11-18
+
+### Changed
+- `BROWSER_HEADLESS` now defaults to automatic: headless when `DISPLAY` is unavailable (services, Wayland bridges, CI), headful when a display exists. An explicit `true`/`false` still wins. Previously the default was always headful, which crashed Playwright in display-less service processes.
 
 ## [3.2.1] - 2026-11-18
 
@@ -14,7 +22,7 @@
 - `npm run test:browserless` validates a remote Browserless instance end to end with local fallback disabled: connect, navigate, screenshot, read, evaluate, second tab, tab list. A pass cannot be the local Chromium taking over.
 
 ### Known limitation
-- The remote CDP context can be torn down between calls by the server (observed as `Target page, context or browser has been closed` and a blank page on the next read). `browser_health` reports the state, but the client does not reconnect automatically yet.
+- Browserless may still close a remote CDP context while an operation is running. The client now reconnects and retries once for the recognized closed-context error or explicit `no-title` blank-page state; a repeated failure is returned as an error.
 
 # Changelog
 
