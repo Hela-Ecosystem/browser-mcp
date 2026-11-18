@@ -267,4 +267,5 @@ module.exports = {
     captureState,
     observeInteractable,
     getElementByRef,
+    storeElementRefs,
 };

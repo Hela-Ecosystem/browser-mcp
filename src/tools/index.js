@@ -30,6 +30,48 @@ const { checkOutputPath, safeFilename } = require('../utils/path-guard');
 const { resolveImageInput } = require('../core/image-input');
 
 /**
+ * Resolve a browser_fill_form key into a selector that actually matches.
+ *
+ * browser_observe reports each field as a `ref` and a `name`, never as CSS, so
+ * the natural observe -> fill_form path passed a bare name like "comments"
+ * straight through. querySelector found nothing and the old code still called
+ * page.fill(), which blocked for the full 30s locator timeout before failing.
+ * Accept what observe actually hands back, and say so immediately when nothing
+ * matches instead of waiting out the timeout.
+ */
+async function resolveFieldSelector(page, key) {
+    const raw = String(key).trim();
+    const quote = (value) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const candidates = [];
+
+    // A ref number from browser_observe / browser_get_state.
+    if (/^\d+$/.test(raw)) {
+        const el = getElementByRef(Number(raw));
+        if (el) {
+            if (el.id) candidates.push(`#${el.id}`);
+            if (el.name) candidates.push(`[name="${quote(el.name)}"]`);
+        }
+    }
+
+    // A bare identifier is almost always the name or id attribute, which is
+    // exactly what observe prints. Try those before treating it as a selector.
+    if (/^[A-Za-z_][\w:-]*$/.test(raw)) {
+        candidates.push(`[name="${quote(raw)}"]`, `#${raw}`);
+    }
+
+    // Previous behaviour, still correct for "[name=x]", "#id", ".cls", "textarea".
+    candidates.push(raw);
+
+    for (const selector of candidates) {
+        const matched = await page.evaluate((value) => {
+            try { return !!document.querySelector(value); } catch { return false; }
+        }, selector);
+        if (matched) return selector;
+    }
+    return null;
+}
+
+/**
  * P1-C2/C3: capture provenance + artifact addressing for file-producing tools.
  * Provenance shape mirrors researcher-mcp/src/provenance.ts and the
  * HelaProvenanceRef in chaining-mcp/src/agent/hela-result.ts (duplicated —
@@ -191,11 +233,11 @@ const TOOLS = [
     },
     {
         name: 'browser_fill_form',
-        description: 'Fill multiple form fields at once. Set typeAware=true to auto-detect input types (date, number, email, tel, url, select, checkbox, radio, file, contenteditable) and format values with the right Playwright method — much more reliable for structured forms than raw fill.',
+        description: 'Fill multiple form fields at once. Keys accept a browser_observe ref, a bare name/id, or a CSS selector. Set typeAware=true to auto-detect input types (date, number, email, tel, url, select, checkbox, radio, file, contenteditable) and format values with the right Playwright method — much more reliable for structured forms than raw fill.',
         inputSchema: {
             type: 'object',
             properties: {
-                data: { type: 'object', description: 'Key-value pairs of selector: value' },
+                data: { type: 'object', description: 'Key-value pairs of field: value. Each key may be a ref number from browser_observe, a bare field name or id, or a CSS selector.' },
                 submit: { type: 'boolean', default: false, description: 'Whether to press Enter after filling' },
                 typeAware: { type: 'boolean', default: false, description: 'Detect input type and format values automatically.' },
             },
@@ -1753,7 +1795,19 @@ async function handleToolCall(name, args = {}) {
             // Why: plain page.fill() doesn't work for checkboxes, selects, file inputs, or
             // contenteditable divs. This auto-detects and dispatches correctly.
             const actions = [];
-            for (const [sel, rawVal] of Object.entries(args.data)) {
+
+            // Resolve everything before touching the page: a key that matches
+            // nothing should abort the whole call, not leave a half-filled form.
+            const resolved = [];
+            for (const [key, rawVal] of Object.entries(args.data)) {
+                const selector = await resolveFieldSelector(page, key);
+                if (!selector) {
+                    return { content: [{ type: 'text', text: `browser_fill_form: nothing matched "${key}". Tried it as a ref, as [name="${key}"], as #${key}, and as a CSS selector. Call browser_observe to list the fields — its \`ref\` and \`name\` are both accepted as keys here.` }], isError: true };
+                }
+                resolved.push([selector, rawVal]);
+            }
+
+            for (const [sel, rawVal] of resolved) {
                 const value = String(rawVal);
                 if (!args.typeAware) {
                     await page.fill(sel, value);
@@ -1774,9 +1828,9 @@ async function handleToolCall(name, args = {}) {
                 }, sel);
 
                 if (!meta) {
-                    await page.fill(sel, value);
-                    actions.push('fill (no element)');
-                    continue;
+                    // Resolution above proved this matched, so the element went away
+                    // mid-call. Report it instead of blocking on the locator timeout.
+                    return { content: [{ type: 'text', text: `browser_fill_form: "${sel}" disappeared from the page while filling.` }], isError: true };
                 }
 
                 // Contenteditable elements need keyboard.type(), not fill()
@@ -3511,5 +3565,6 @@ async function handleToolCall(name, args = {}) {
 module.exports = {
     TOOLS,
     handleToolCall,
-    normalizeToolCall
+    normalizeToolCall,
+    resolveFieldSelector
 };
