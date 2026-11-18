@@ -1,6 +1,6 @@
 # HeLa Cytosol: canonical tools
 
-Server version **3.2.5**. Generated from the ecosystem schema catalog; regenerate with `npm run docs:generate -- --servers` in the ecosystem checkout.
+Server version **3.2.6**. Generated from the ecosystem schema catalog; regenerate with `npm run docs:generate -- --servers` in the ecosystem checkout.
 
 Only names advertised by `tools/list` are listed here. Older aliases in migration examples are not additional tools. Runtime namespace prefixes are optional and do not change these server-local names.
 
@@ -108,7 +108,7 @@ Extract data from an HTML table into JSON.
 
 ## `browser_fill_form`
 
-Fill multiple form fields at once. Set typeAware=true to auto-detect input types (date, number, email, tel, url, select, checkbox, radio, file, contenteditable) and format values with the right Playwright method — much more reliable for structured forms than raw fill.
+Fill multiple form fields at once. Keys accept a browser_observe ref, a bare name/id, or a CSS selector. Set typeAware=true to auto-detect input types (date, number, email, tel, url, select, checkbox, radio, file, contenteditable) and format values with the right Playwright method — much more reliable for structured forms than raw fill.
 
 ## `browser_forward`
 
