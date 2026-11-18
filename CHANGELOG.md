@@ -3,6 +3,11 @@
 ### Changed
 - `BROWSER_HEADLESS` now defaults to automatic: headless when `DISPLAY` is unavailable (services, Wayland bridges, CI), headful when a display exists. An explicit `true`/`false` still wins. Previously the default was always headful, which crashed Playwright in display-less service processes.
 
+## [3.2.4] - 2026-11-19
+
+### Changed
+- npm audit fix clears a critical advisory plus eight others; browser behaviour unchanged.
+
 ## [3.2.1] - 2026-11-18
 
 ### Added
