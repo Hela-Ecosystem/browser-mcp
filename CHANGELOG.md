@@ -1,3 +1,9 @@
+## [3.2.6] - 2026-11-19
+
+### Fixed
+- `browser_fill_form` now accepts what `browser_observe` actually reports. Keys resolve in order: a ref number from the last observe/get_state, a bare name or id, then the key as a CSS selector, so every existing caller keeps working. Attribute values are quoted, so a field name containing a quote cannot break out of the selector.
+- Resolution runs for every key before anything is typed, so an unmatched key aborts the call and names what it tried instead of leaving a half-filled form; the no-element branch can no longer reach `page.fill`, which used to block for the full 30-second locator timeout (a miss now resolves in milliseconds).
+
 ## [3.2.5] - 2026-11-19
 
 ### Fixed
