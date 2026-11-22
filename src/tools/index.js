@@ -32,6 +32,8 @@ const { shapeCookies, cookiesForPage, resolveUploadPaths } = require('../utils/c
 
 const { checkOutputPath, checkInputPath, safeFilename, getWorkspaceRoots } = require('../utils/path-guard');
 const { resolveImageInput } = require('../core/image-input');
+const { getImageDimensions } = require('../utils/image-dimensions');
+const { applyImageUnits, extractOcrLines, normaliseOcrLines, NORMALISED_SPACE } = require('../utils/image-boxes');
 
 const MAX_PAYLOAD_SUMMARY_LENGTH = 2000;
 const PAYLOAD_SUMMARY_SUFFIX = '\n… Full result in structuredContent.';
@@ -656,20 +658,20 @@ const TOOLS = [
     // ── Phase 3 Enhancements ─────────────────────────────────────────────────
     {
         name: 'browser_ocr',
-        description: 'Extract text from a screenshot or code block using OCR (Tesseract.js). Use for reading code images, CAPTCHAs, or any visual text that is not accessible via DOM.',
+        description: 'Extract text from a screenshot or code block using OCR (Tesseract.js). Use for reading code images, CAPTCHAs, or any visual text that is not accessible via DOM. When text regions are available, lines[].bbox is normalised 0–1 and lines[].bboxPx is the same box in pixels, against image.width × image.height.',
         inputSchema: {
             type: 'object',
             properties: {
                 selector: { type: 'string', description: 'CSS selector to screenshot (e.g. ".code-block"). If omitted, screenshots full page.' },
                 language: { type: 'string', default: 'eng', description: 'Tesseract language code (eng, ind, etc.)' },
                 preprocess: { type: 'string', enum: ['none', 'threshold', 'grayscale', 'sharpen'], default: 'threshold', description: 'Image preprocessing for better OCR accuracy.' },
-                returnImage: { type: 'boolean', default: false, description: 'Also return the preprocessed image as base64.' },
+                returnImage: { type: 'boolean', default: false, description: 'Also return the preprocessed image as base64 under imageBase64.' },
             },
         },
     },
     {
         name: 'browser_visual_analyze',
-        description: 'Analyze the current page or a selected element with HeLa Cytosol visual intelligence. Mirage downloads and caches its local model on first use, then returns scene, object, text, relation, mask, or structured extraction results.',
+        description: 'Analyze the current page or a selected element with HeLa Cytosol visual intelligence. Mirage downloads and caches its local model on first use, then returns scene, object, text, relation, mask, or structured extraction results. Every box is returned twice: bbox normalised 0–1 and bboxPx in pixels against image.width × image.height.',
         annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
@@ -677,7 +679,7 @@ const TOOLS = [
                 operation: { type: 'string', enum: ['describe', 'extract'], default: 'describe', description: 'Describe the image or extract values matching schema.' },
                 selector: { type: 'string', description: 'Optional CSS selector to analyze only that element. Without it, analyze the current viewport.' },
                 sections: { type: 'array', items: { type: 'string' }, description: 'Describe sections to return, such as scene, objects, text, relations, or reasoning.' },
-                fields: { type: 'array', items: { type: 'string' }, description: 'Object fields to return, such as bbox, score, mask, or description.' },
+                fields: { type: 'array', items: { type: 'string' }, description: 'Object fields to return, such as bbox (normalised 0–1, mirrored as bboxPx), score, mask, or description.' },
                 schema: { type: 'object', description: 'Non-empty extraction schema used when operation=extract.' },
                 language: { type: 'string', description: 'Optional output language code.' },
                 maskFormat: { type: 'string', description: 'Optional mask output format, such as polygons or bitmap.' },
@@ -691,7 +693,7 @@ const TOOLS = [
     },
     {
         name: 'browser_image_analyze',
-        description: 'Analyze a dedicated image with HeLa Cytosol visual intelligence. Provide exactly one imagePath, imageUrl, or imageBase64. Mirage returns VLM scene understanding, OCR, object detection, segmentation, relations, or schema-based decisions without requiring an active browser page.',
+        description: 'Analyze a dedicated image with HeLa Cytosol visual intelligence. Provide exactly one imagePath, imageUrl, or imageBase64. Mirage returns VLM scene understanding, OCR, object detection, segmentation, relations, or schema-based decisions without requiring an active browser page. Every box is returned twice: bbox normalised 0–1 and bboxPx in pixels against image.width × image.height, so browser_click and crops can use bboxPx directly.',
         annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
@@ -701,7 +703,7 @@ const TOOLS = [
                 imageBase64: { type: 'string', description: 'Base64 image bytes, optionally prefixed with a data:image/...;base64, header.' },
                 operation: { type: 'string', enum: ['describe', 'extract'], default: 'describe', description: 'Describe the image or extract values matching schema.' },
                 sections: { type: 'array', items: { type: 'string' }, description: 'Describe sections to return, such as scene, objects, text, relations, or reasoning.' },
-                fields: { type: 'array', items: { type: 'string' }, description: 'Object fields to return, such as bbox, score, mask, or description.' },
+                fields: { type: 'array', items: { type: 'string' }, description: 'Object fields to return, such as bbox (normalised 0–1, mirrored as bboxPx), score, mask, or description.' },
                 schema: { type: 'object', description: 'Non-empty extraction schema used when operation=extract.' },
                 language: { type: 'string', description: 'Optional output language code.' },
                 maskFormat: { type: 'string', description: 'Optional mask output format, such as polygons or bitmap.' },
@@ -2542,19 +2544,27 @@ async function handleToolCall(name, args = {}, targetPage) {
 
             // Run Tesseract OCR — suppress logger to avoid noisy output
             const lang = args.language || 'eng';
-            const { data: { text, confidence } } = await Tesseract.recognize(processedBuffer, lang, {
+            const { data } = await Tesseract.recognize(processedBuffer, lang, {
                 logger: () => {},
             });
 
             const result = {
-                text: text.trim(),
-                confidence: Math.round(confidence),
+                text: data.text.trim(),
+                confidence: Math.round(data.confidence),
                 language: lang,
                 preprocessing: preprocess,
             };
 
+            const dimensions = getImageDimensions(processedBuffer);
+            const lines = dimensions ? normaliseOcrLines(extractOcrLines(data), dimensions) : [];
+            if (lines.length) {
+                result.lines = lines;
+                result.image = { width: dimensions.width, height: dimensions.height };
+                result.coordinateSpace = NORMALISED_SPACE;
+            }
+
             if (args.returnImage) {
-                result.image = processedBuffer.toString('base64');
+                result.imageBase64 = processedBuffer.toString('base64');
             }
 
             return payloadResult(result.text, result);
@@ -2569,6 +2579,7 @@ async function handleToolCall(name, args = {}, targetPage) {
             const imageBuffer = args.selector
                 ? await page.locator(args.selector).first().screenshot({ type: 'png' })
                 : await page.screenshot({ type: 'png' });
+            const dimensions = getImageDimensions(imageBuffer);
             try {
                 const result = await mirage.analyze(imageBuffer, {
                     operation,
@@ -2583,6 +2594,7 @@ async function handleToolCall(name, args = {}, targetPage) {
                     maxTextLines: args.maxTextLines,
                     maxTokens: args.maxTokens,
                 });
+                applyImageUnits(result, dimensions, { always: operation === 'describe' });
                 return payloadResult(JSON.stringify(result, null, 2), result);
             } catch (error) {
                 return { content: [{ type: 'text', text: `Mirage visual analysis failed: ${error.message}` }], isError: true };
@@ -2596,6 +2608,7 @@ async function handleToolCall(name, args = {}, targetPage) {
             }
             try {
                 const imageBuffer = await resolveImageInput(args);
+                const dimensions = getImageDimensions(imageBuffer);
                 const result = await mirage.analyze(imageBuffer, {
                     operation,
                     sections: args.sections,
@@ -2609,6 +2622,7 @@ async function handleToolCall(name, args = {}, targetPage) {
                     maxTextLines: args.maxTextLines,
                     maxTokens: args.maxTokens,
                 });
+                applyImageUnits(result, dimensions, { always: operation === 'describe' });
                 return payloadResult(JSON.stringify(result, null, 2), result);
             } catch (error) {
                 return { content: [{ type: 'text', text: `Mirage image analysis failed: ${error.message}` }], isError: true };

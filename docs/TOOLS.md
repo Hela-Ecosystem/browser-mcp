@@ -152,7 +152,7 @@ Hover over an element.
 
 ## `browser_image_analyze`
 
-Analyze a dedicated image with HeLa Cytosol visual intelligence. Provide exactly one imagePath, imageUrl, or imageBase64. Mirage returns VLM scene understanding, OCR, object detection, segmentation, relations, or schema-based decisions without requiring an active browser page.
+Analyze a dedicated image with HeLa Cytosol visual intelligence. Provide exactly one imagePath, imageUrl, or imageBase64. Mirage returns VLM scene understanding, OCR, object detection, segmentation, relations, or schema-based decisions without requiring an active browser page. Every box is returned twice: bbox normalised 0–1 and bboxPx in pixels against image.width × image.height, so browser_click and crops can use bboxPx directly.
 
 ## `browser_intercept`
 
@@ -208,7 +208,7 @@ Return only interactable elements (buttons, inputs, links, selects) without a sc
 
 ## `browser_ocr`
 
-Extract text from a screenshot or code block using OCR (Tesseract.js). Use for reading code images, CAPTCHAs, or any visual text that is not accessible via DOM.
+Extract text from a screenshot or code block using OCR (Tesseract.js). Use for reading code images, CAPTCHAs, or any visual text that is not accessible via DOM. When text regions are available, lines[].bbox is normalised 0–1 and lines[].bboxPx is the same box in pixels, against image.width × image.height.
 
 ## `browser_parallel_execute`
 
@@ -314,7 +314,7 @@ Upload a file to an <input type="file"> element. Provide absolute file path(s).
 
 ## `browser_visual_analyze`
 
-Analyze the current page or a selected element with HeLa Cytosol visual intelligence. Mirage downloads and caches its local model on first use, then returns scene, object, text, relation, mask, or structured extraction results.
+Analyze the current page or a selected element with HeLa Cytosol visual intelligence. Mirage downloads and caches its local model on first use, then returns scene, object, text, relation, mask, or structured extraction results. Every box is returned twice: bbox normalised 0–1 and bboxPx in pixels against image.width × image.height.
 
 ## `browser_wait`
 

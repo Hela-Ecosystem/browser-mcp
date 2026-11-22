@@ -153,7 +153,7 @@ test('parallel results retain each action response from its named page', async (
 
 test('OCR and both visual analysis tools preserve large results beyond the text cap', async () => {
     const ocr = await call('browser_ocr', { preprocess: 'none', returnImage: true }, /^fixture text/);
-    assert.deepEqual(ocr, { text: largeText.trim(), confidence: 93, language: 'eng', preprocessing: 'none', image: image.toString('base64') });
+    assert.deepEqual(ocr, { text: largeText.trim(), confidence: 93, language: 'eng', preprocessing: 'none', imageBase64: image.toString('base64') });
     for (const name of ['browser_visual_analyze', 'browser_image_analyze']) {
         assert.deepEqual(await call(name, {}, /"scene"/), vision);
     }

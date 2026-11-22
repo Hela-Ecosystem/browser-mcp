@@ -252,6 +252,23 @@ browser_clear_mocks()
 | `browser_replay_macro` | Replay recorded macros or action arrays with speed control and dry-run |
 | `browser_parallel_execute` | Run actions on multiple named pages concurrently |
 
+**Image coordinate convention.** Every tool that returns boxes (`browser_ocr`, `browser_visual_analyze`, `browser_image_analyze`) uses the same two fields, with `image` naming the pixel space:
+
+- `bbox` — normalised `0..1` against `image.width` × `image.height`.
+- `bboxPx` — the same box in pixels, i.e. `bbox[0] × image.width`, `bbox[1] × image.height`, and so on.
+
+```json
+{
+  "image": { "width": 640, "height": 240 },
+  "coordinateSpace": "normalised-0-1",
+  "text": [
+    { "string": "HELAOCR TEST 4821", "bbox": [0.062, 0.24, 0.22, 0.302], "bboxPx": [39.68, 57.6, 140.8, 72.48] }
+  ]
+}
+```
+
+Use `bboxPx` for `browser_click({ x, y })`, screenshot crops, and highlight overlays. Mirage's internal 0–1000 boxes are converted before the response, so callers never have to guess the backend space. `browser_ocr` returns line boxes as `lines[]` when Tesseract exposes them, and its optional preprocessed image is `imageBase64` (leaving `image` for the dimensions).
+
 **Session storage note:** Pass `includeStorage: true` to `browser_save_session` to also capture `localStorage` and `sessionStorage`. Required for sites that store auth tokens in Web Storage instead of cookies (most modern SPAs). Storage is only restored if the current page origin matches the saved origin.
 
 ### Helpers
