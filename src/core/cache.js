@@ -19,6 +19,9 @@ const MAX_ENTRIES = 500;
 const STALE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 let _cache = null;
+// Real hit counter for browser_cache_stats: incremented only when a fresh
+// cached selector is actually returned and used.
+let _hits = 0;
 
 // Lazy-load cache from disk — avoids I/O on every tool call
 function load() {
@@ -56,6 +59,7 @@ function get(hostname, description) {
         save();
         return null;
     }
+    _hits++;
     return entry.selector;
 }
 
@@ -81,12 +85,13 @@ function invalidate(hostname, description) {
     save();
 }
 
-// Return cache stats — used by browser_cache_stats tool
+// Return cache stats — used by browser_cache_stats tool.
+// `hits` is the real number of selector cache hits in this server process.
 function stats() {
     const cache = load();
     const entries = Object.keys(cache).length;
     const stale = Object.values(cache).filter(e => Date.now() - e.ts > STALE_MS).length;
-    return { entries, stale };
+    return { hits: _hits, entries, stale };
 }
 
 module.exports = { get, set, invalidate, stats };

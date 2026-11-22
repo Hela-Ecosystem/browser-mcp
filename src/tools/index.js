@@ -19,6 +19,7 @@ const {
     healthCheck,
 } = require('../core/browser');
 const { structureTable } = require('../utils/table-structure.js');
+const { extractSchemaInPage } = require('../utils/schema-extract.js');
 const { RecaptchaSolver } = require('../core/recaptcha');
 const mirage = require('../core/mirage');
 const { captureState, observeInteractable, getElementByRef } = require('../core/state');
@@ -31,9 +32,10 @@ const { validateURL, resolveAndValidate } = require('../utils/url-validator');
 const { shapeCookies, cookiesForPage, resolveUploadPaths } = require('../utils/cookie-scope');
 
 const { checkOutputPath, checkInputPath, safeFilename, getWorkspaceRoots } = require('../utils/path-guard');
+const { CAPTCHA_SELECTORS } = require('../utils/selectors');
 const { resolveImageInput } = require('../core/image-input');
 const { getImageDimensions } = require('../utils/image-dimensions');
-const { applyImageUnits, extractOcrLines, normaliseOcrLines, NORMALISED_SPACE } = require('../utils/image-boxes');
+const { applyImageUnits, extractOcrLines, normaliseOcrLines, noteMirageOcr, NORMALISED_SPACE } = require('../utils/image-boxes');
 
 const MAX_PAYLOAD_SUMMARY_LENGTH = 2000;
 const PAYLOAD_SUMMARY_SUFFIX = '\n… Full result in structuredContent.';
@@ -378,7 +380,7 @@ const TOOLS = [
     // ── Observation ───────────────────────────────────────────────────────────
     {
         name: 'browser_get_state',
-        description: 'Capture the current page state: URL, title, headings, text blocks, interactive elements (with ref numbers), AX tree, popups, and CAPTCHA status. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.',
+        description: 'Capture the current page state: URL, title, headings, text blocks (text plus a textBlocks array), interactive elements (with ref numbers, including checked state and name for checkboxes/radios), AX tree, popups, and CAPTCHA status. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.',
         annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
@@ -892,7 +894,7 @@ const TOOLS = [
     // ── Schema Extraction ─────────────────────────────────────────────────────
     {
         name: 'browser_extract_schema',
-        description: 'Extract structured data from the page matching a JSON schema. Provide a schema object with property names and descriptions — the tool scrapes the page and returns a typed JSON object. More reliable than text extraction for structured data (prices, tables, forms, product info).',
+        description: 'Extract structured data from the page matching a JSON schema. Provide a schema object with property names and descriptions. Reads JSON-LD (application/ld+json) and itemprop microdata first, then HTML tables, and only falls back to the keyword heuristic for properties those sources cannot resolve. More reliable than text extraction for structured data (prices, tables, forms, product info).',
         inputSchema: {
             type: 'object',
             properties: {
@@ -1053,7 +1055,7 @@ const TOOLS = [
     // ── Emulation & Viewport ──────────────────────────────────────────────────
     {
         name: 'browser_emulate',
-        description: 'Emulate network conditions, CPU throttling, geolocation, locale, timezone, and color scheme.',
+        description: 'Emulate network conditions, CPU throttling, geolocation, locale, timezone, and color scheme. Locale also sets navigator.language, navigator.languages, and the Accept-Language header; the reply reports the language the page actually sees.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -1816,8 +1818,16 @@ async function handleToolCall(name, args = {}, targetPage) {
             return { content: [{ type: 'text', text }] };
         }
         case 'browser_switch_tab': {
+            const tabs = await listPages();
             const success = await switchPage(args.index);
-            return { content: [{ type: 'text', text: success ? `Switched to tab ${args.index}.` : `Failed to switch to tab ${args.index}.` }] };
+            if (!success) {
+                const available = tabs.length ? `indexes 0-${tabs.length - 1}` : 'no tabs';
+                return {
+                    content: [{ type: 'text', text: `Failed to switch to tab ${args.index}: no such tab (${tabs.length} tab(s) open, ${available}).` }],
+                    isError: true,
+                };
+            }
+            return { content: [{ type: 'text', text: `Switched to tab ${args.index}.` }] };
         }
         case 'browser_wait':
             return waitForCondition(page, args);
@@ -2595,6 +2605,7 @@ async function handleToolCall(name, args = {}, targetPage) {
                     maxTokens: args.maxTokens,
                 });
                 applyImageUnits(result, dimensions, { always: operation === 'describe' });
+                noteMirageOcr(result);
                 return payloadResult(JSON.stringify(result, null, 2), result);
             } catch (error) {
                 return { content: [{ type: 'text', text: `Mirage visual analysis failed: ${error.message}` }], isError: true };
@@ -2623,6 +2634,7 @@ async function handleToolCall(name, args = {}, targetPage) {
                     maxTokens: args.maxTokens,
                 });
                 applyImageUnits(result, dimensions, { always: operation === 'describe' });
+                noteMirageOcr(result);
                 return payloadResult(JSON.stringify(result, null, 2), result);
             } catch (error) {
                 return { content: [{ type: 'text', text: `Mirage image analysis failed: ${error.message}` }], isError: true };
@@ -3001,13 +3013,17 @@ async function handleToolCall(name, args = {}, targetPage) {
 
         // Request Interception
         case 'browser_intercept': {
+            const existing = listRoutes().find(route => route.pattern === args.pattern);
             await addRoute(args.pattern, args.action, {
                 status: args.status,
                 body: args.body,
                 contentType: args.contentType,
                 headers: args.headers,
             });
-            return { content: [{ type: 'text', text: `Intercept rule added: ${args.action} "${args.pattern}"` }] };
+            const replaced = existing
+                ? `\nWarning: replaced the existing "${existing.action}" rule for "${args.pattern}" with "${args.action}".`
+                : '';
+            return { content: [{ type: 'text', text: `Intercept rule added: ${args.action} "${args.pattern}"${replaced}` }] };
         }
         case 'browser_intercept_list': {
             const routes = listRoutes();
@@ -3032,8 +3048,17 @@ async function handleToolCall(name, args = {}, targetPage) {
         case 'browser_handle_captcha': {
             const solver = new RecaptchaSolver(page);
 
-            // Verify mode — check if already solved
+            // Verify mode — distinguish "no CAPTCHA on this page" from "not solved yet"
             if (args.verify) {
+                const detection = await solver.detect();
+                // get_state uses the broader CAPTCHA_SELECTORS set, so keep the
+                // two tools consistent about whether a widget exists at all.
+                const genericCaptchaPresent = detection.found
+                    ? true
+                    : await page.evaluate(selector => !!document.querySelector(selector), CAPTCHA_SELECTORS).catch(() => false);
+                if (!genericCaptchaPresent) {
+                    return { content: [{ type: 'text', text: 'No CAPTCHA present on this page.' }] };
+                }
                 const solved = await solver.verifySolved();
                 return { content: [{ type: 'text', text: solved ? 'CAPTCHA solved.' : 'CAPTCHA not yet solved.' }], isError: !solved };
             }
@@ -3290,53 +3315,15 @@ async function handleToolCall(name, args = {}, targetPage) {
         }
 
         case 'browser_extract_schema': {
-            const schema = args.schema;
+            const schema = args.schema || {};
             const scope = args.selector || 'body';
-            const data = await page.evaluate(({ scopeSelector, schemaProps }) => {
-                const root = document.querySelector(scopeSelector) || document.body;
-                const result = {};
-                for (const [key, def] of Object.entries(schemaProps)) {
-                    const hint = (def.description || '').toLowerCase();
-                    const type = def.type || 'string';
-
-                    // Strategy: try aria/semantic selectors guided by description hints
-                    const candidates = [];
-                    if (hint.includes('price') || hint.includes('cost')) candidates.push('[class*="price"]', '[itemprop="price"]', '[data-price]');
-                    if (hint.includes('title') || hint.includes('name')) candidates.push('h1', 'h2', '[itemprop="name"]', '[class*="title"]');
-                    if (hint.includes('description')) candidates.push('[itemprop="description"]', '[class*="description"]', '[class*="summary"]', 'p');
-                    if (hint.includes('image') || hint.includes('img')) candidates.push('img[src]', '[itemprop="image"]');
-                    if (hint.includes('url') || hint.includes('link')) candidates.push('a[href]', 'link[rel="canonical"]');
-                    if (hint.includes('rating') || hint.includes('score')) candidates.push('[itemprop="ratingValue"]', '[class*="rating"]', '[class*="score"]');
-                    if (hint.includes('author')) candidates.push('[itemprop="author"]', '[class*="author"]', '[rel="author"]');
-                    if (hint.includes('date')) candidates.push('time[datetime]', '[itemprop="datePublished"]', '[class*="date"]');
-                    // Fallback: try to find element by key name as class/id/itemprop
-                    candidates.push(`[itemprop="${key}"]`, `[class*="${key}"]`, `[id*="${key}"]`, `[data-${key}]`);
-
-                    let found = null;
-                    for (const sel of candidates) {
-                        const el = root.querySelector(sel);
-                        if (el) { found = el; break; }
-                    }
-
-                    if (!found) { result[key] = null; continue; }
-
-                    if (type === 'string' || type === 'number') {
-                        let val = found.getAttribute('content') || found.getAttribute('datetime')
-                            || found.getAttribute('data-price') || found.innerText?.trim() || found.getAttribute('src') || found.getAttribute('href') || null;
-                        if (type === 'number' && val) val = parseFloat(val.replace(/[^0-9.-]/g, '')) || null;
-                        result[key] = val;
-                    } else if (type === 'boolean') {
-                        result[key] = found !== null;
-                    } else if (type === 'array') {
-                        result[key] = Array.from(root.querySelectorAll(candidates[candidates.length - 1] || sel))
-                            .map(e => e.innerText?.trim()).filter(Boolean).slice(0, 20);
-                    } else {
-                        result[key] = found.innerText?.trim() || null;
-                    }
-                }
-                return result;
-            }, { scopeSelector: scope, schemaProps: schema.properties || schema });
-
+            const schemaProps = schema.properties || schema;
+            if (!schemaProps || typeof schemaProps !== 'object' || Array.isArray(schemaProps) || !Object.keys(schemaProps).length) {
+                return { content: [{ type: 'text', text: 'browser_extract_schema requires a schema with at least one property.' }], isError: true };
+            }
+            // JSON-LD, microdata, and tables run first inside the page; the
+            // keyword heuristic only fills properties they could not resolve.
+            const data = await page.evaluate(extractSchemaInPage, { scopeSelector: scope, schemaProps });
             return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
         }
 
@@ -3496,7 +3483,9 @@ async function handleToolCall(name, args = {}, targetPage) {
         // ── Emulation & Viewport ──────────────────────────────────────────────────
         case 'browser_emulate': {
             const ctx = await getBrowserContext();
-            
+            const applied = [];
+            let localeUnset = false;
+
             // 1. Geolocation
             if (args.geolocation) {
                 await ctx.setGeolocation({
@@ -3505,26 +3494,47 @@ async function handleToolCall(name, args = {}, targetPage) {
                     accuracy: args.geolocation.accuracy ?? 100
                 });
                 await ctx.grantPermissions(['geolocation']);
+                applied.push('geolocation');
             }
 
             // 2. Color Scheme
             if (args.colorScheme) {
                 await page.emulateMedia({ colorScheme: args.colorScheme });
+                applied.push(`colorScheme=${args.colorScheme}`);
             }
 
             // 3. CDP-specific emulation (CPU, Network, Timezone, Locale)
             const client = await ctx.newCDPSession(page);
-            
+
             if (args.cpuThrottlingRate) {
                 await client.send('Emulation.setCPUThrottlingRate', { rate: args.cpuThrottlingRate });
+                applied.push(`cpuThrottlingRate=${args.cpuThrottlingRate}`);
             }
 
             if (args.timezoneId) {
                 await client.send('Emulation.setTimezoneOverride', { timezoneId: args.timezoneId });
+                applied.push(`timezoneId=${args.timezoneId}`);
             }
 
             if (args.locale) {
+                // Emulation.setLocaleOverride only changes Intl.* — navigator.language
+                // and the Accept-Language header need a user-agent override, which
+                // also drives navigator.languages in Chromium.
                 await client.send('Emulation.setLocaleOverride', { locale: args.locale });
+                const userAgent = await page.evaluate(() => navigator.userAgent);
+                await client.send('Emulation.setUserAgentOverride', {
+                    userAgent,
+                    acceptLanguage: args.locale,
+                });
+
+                const language = await page.evaluate(() => navigator.language || '');
+                if (!language) {
+                    localeUnset = true;
+                } else if (language.toLowerCase() !== args.locale.toLowerCase()) {
+                    applied.push(`navigator.language=${language} (requested ${args.locale})`);
+                } else {
+                    applied.push(`navigator.language=${language}, Accept-Language=${args.locale}`);
+                }
             }
 
             if (args.networkProfile) {
@@ -3548,9 +3558,21 @@ async function handleToolCall(name, args = {}, targetPage) {
                 }
                 await client.send('Network.enable');
                 await client.send('Network.emulateNetworkConditions', conditions);
+                applied.push(`networkProfile=${args.networkProfile}`);
             }
 
-            return { content: [{ type: 'text', text: 'Emulation settings successfully applied.' }] };
+            if (localeUnset) {
+                const other = applied.length ? ` Other settings applied: ${applied.join(', ')}.` : '';
+                return {
+                    content: [{ type: 'text', text: `Locale emulation failed: navigator.language is unset after requesting ${args.locale}.${other}` }],
+                    isError: true,
+                };
+            }
+
+            if (!applied.length) {
+                return { content: [{ type: 'text', text: 'No emulation settings were provided; nothing changed.' }] };
+            }
+            return { content: [{ type: 'text', text: `Emulation applied: ${applied.join(', ')}.` }] };
         }
 
         case 'browser_resize_page': {

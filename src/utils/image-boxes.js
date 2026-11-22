@@ -95,6 +95,39 @@ function applyImageUnits(result, dimensions, { always = false } = {}) {
 }
 
 /**
+ * Mirage's OCR is lower-fidelity than browser_ocr (Tesseract): it has been
+ * observed dropping leading glyphs and misreading digits. Annotate results so
+ * callers are told to cross-check instead of treating the read as authoritative.
+ * Low-confidence lines are called out individually.
+ */
+const LOW_OCR_CONFIDENCE = 0.6;
+
+function noteMirageOcr(result) {
+    if (!result || typeof result !== 'object') return result;
+    const lines = Array.isArray(result.text)
+        ? result.text
+        : Array.isArray(result.lines) ? result.lines : [];
+    if (!lines.length) return result;
+
+    const lowConfidence = [];
+    for (const line of lines) {
+        if (!line || typeof line !== 'object') continue;
+        const text = line.string ?? line.text;
+        const score = Number(line.score ?? line.confidence);
+        if (text && Number.isFinite(score) && score < LOW_OCR_CONFIDENCE) {
+            lowConfidence.push({ text: String(text), score });
+        }
+    }
+
+    result.ocrQuality = {
+        engine: 'mirage',
+        warning: 'Mirage OCR is lower-fidelity than browser_ocr (Tesseract). Cross-check exact text, codes, and digits with browser_ocr before acting on them.',
+        ...(lowConfidence.length ? { lowConfidenceLines: lowConfidence } : {}),
+    };
+    return result;
+}
+
+/**
  * Tesseract exposes line boxes on `data.lines` when blocks are requested; older
  * output shapes nest them under blocks -> paragraphs -> lines.
  */
@@ -137,4 +170,5 @@ module.exports = {
     applyImageUnits,
     extractOcrLines,
     normaliseOcrLines,
+    noteMirageOcr,
 };

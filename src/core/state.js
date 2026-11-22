@@ -90,13 +90,29 @@ async function captureState(page) {
                 return (r.width > 0) ? { level: parseInt(el.tagName[1]), text: el.innerText.trim().substring(0, 200) } : null;
             }).filter(Boolean).slice(0, 15);
 
-        const blocks = querySelectorAllDeep('p, li, td, blockquote, pre code', root)
-            .map(el => {
-                const r = el.getBoundingClientRect();
-                const cs = window.getComputedStyle(el);
-                if (r.width === 0 || cs.display === 'none' || cs.visibility === 'hidden') return null;
-                return el.innerText.trim().substring(0, 500);
-            }).filter(t => t && t.length > 10).slice(0, 40);
+        // Collect every visible text block, not a fixed tag whitelist: a page can
+        // put its copy in <div>/<span>/<dd>/<th> and the old p/li/td scan missed
+        // it. Direct text nodes are used so a block is reported once (no parent
+        // and child both echoing the same sentence) and short blocks survive.
+        const textBlocks = [];
+        const skippedTags = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'IFRAME']);
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+        for (let node = walker.currentNode; node; node = walker.nextNode()) {
+            if (skippedTags.has(node.tagName)) continue;
+            const directText = Array.from(node.childNodes)
+                .filter(child => child.nodeType === 3)
+                .map(child => child.textContent)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (!directText) continue;
+            const r = node.getBoundingClientRect();
+            if (r.width === 0 || r.height === 0) continue;
+            const cs = window.getComputedStyle(node);
+            if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+            textBlocks.push(directText.substring(0, 500));
+            if (textBlocks.length >= 200) break;
+        }
 
         const popups = querySelectorAllDeep('.modal, [role="dialog"], .swal2-popup', document)
             .map(el => {
@@ -109,7 +125,8 @@ async function captureState(page) {
             url: location.href,
             title: document.title,
             headings,
-            text: blocks.join('\n').substring(0, 5000),
+            text: textBlocks.join('\n').substring(0, 10000),
+            textBlocks,
             popups: popups.length ? popups : undefined,
             captchaDetected: !!document.querySelector(captchaSelectors)
         };
@@ -161,7 +178,12 @@ async function captureState(page) {
                     if (el.getAttribute('role')) entry.role = el.getAttribute('role');
                     if (el.innerText) entry.text = el.innerText.trim().substring(0, 150);
                     if (el.tagName === 'A' && el.href) entry.href = el.href.substring(0, 150);
-                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') entry.value = (el.value || '').substring(0, 100);
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+                        entry.inputType = el.type || el.tagName.toLowerCase();
+                        if (el.name) entry.name = el.name;
+                        if (el.value !== undefined && el.value !== null) entry.value = String(el.value).substring(0, 100);
+                        if (el.type === 'checkbox' || el.type === 'radio') entry.checked = !!el.checked;
+                    }
 
                     return entry;
                 }).filter(Boolean);
@@ -249,6 +271,7 @@ async function observeInteractable(page) {
                         if (el.value) entry.value = el.value.substring(0, 100);
                         if (el.placeholder) entry.placeholder = el.placeholder;
                         if (el.name) entry.name = el.name;
+                        if (el.type === 'checkbox' || el.type === 'radio') entry.checked = !!el.checked;
                     }
                     return entry;
                 }).filter(Boolean);

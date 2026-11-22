@@ -157,6 +157,18 @@ class RecaptchaSolver {
     }
 
     /**
+     * Report whether a CAPTCHA widget is present on the page. Distinguishes
+     * "not solved" from "nothing to solve" for browser_handle_captcha(verify).
+     */
+    async detect() {
+        try {
+            return await this._detectCaptchaInstance();
+        } catch (_) {
+            return { found: false };
+        }
+    }
+
+    /**
      * Check if the reCAPTCHA token is present and non-expired.
      */
     async verifySolved() {
