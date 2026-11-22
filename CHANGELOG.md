@@ -1,3 +1,8 @@
+## [3.3.1] - 2026-11-22
+
+### Fixed
+- Tool payloads reach MCP clients. Seventeen handlers put the result in a non-standard `data` field that clients drop, so callers saw only the summary line; they now return `structuredContent` plus a text summary capped at 2,000 UTF-16 units. Failed assertions and failed replay/parallel/batch operations set `isError` and keep their diagnostics. (`browser-mcp#24`)
+
 ## [3.3.0] - 2026-11-22
 
 ### Changed
