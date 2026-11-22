@@ -99,7 +99,7 @@ test('macro stop, save, list, and export expose their payloads', async t => {
     assert.deepEqual(await call('browser_record_macro', { action: 'stop', format: 'json' }, /1 actions recorded/), {
         actions, script: JSON.stringify(actions, null, 2),
     });
-    const exported = await call('browser_record_macro', { action: 'export', name }, /^const \{ test, expect \}/);
+    const exported = await call('browser_record_macro', { action: 'export', name }, /^#!\/usr\/bin\/env node/);
     assert.equal(exported.script, recorder.generate(name));
     assert.ok(exported.script.includes(largeText));
 
@@ -159,8 +159,9 @@ test('OCR and both visual analysis tools preserve large results beyond the text 
     }
 });
 
-test('batch quiz results expose failure details with an error flag', async () => {
+test('batch quiz results expose failure details with an error flag', async t => {
+    t.mock.method(page, 'evaluate', async () => ({ groupCount: 0, error: 'No radio/checkbox inputs found' }));
     assert.deepEqual(await call('browser_batch_answer_quiz', { answers: [{ q: 4, option: 1 }] }, /Batch answered: 0\/1/, true), {
-        answered: 0, errors: [{ q: 4, error: 'No radio/checkbox inputs found' }], pages: [],
+        answered: 0, total: 1, unanswered: [4], errors: [{ q: 4, error: 'No radio/checkbox inputs found' }], pages: [],
     });
 });

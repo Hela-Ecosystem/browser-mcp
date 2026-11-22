@@ -35,7 +35,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const normalized = normalizeToolCall(name, args ?? {});
         const result = withEnvelope(name, await browser.executeWithRecovery(
             () => handleToolCall(normalized.name, normalized.args),
-            normalized.name !== 'browser_image_analyze',
+            normalized.name !== 'browser_image_analyze' &&
+                !(normalized.name === 'browser_search' && normalized.args.scope === 'tools'),
         ));
         return appendWarning(result, normalized.deprecated);
     } catch (e) {

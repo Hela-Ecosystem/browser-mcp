@@ -30,7 +30,7 @@ Navigate back in history.
 
 ## `browser_batch_answer_quiz`
 
-Batch answer multiple quiz questions in a single tool call. Navigates through pages, selects answers, and optionally submits. Handles radio and checkbox questions. Returns results with errors.
+Select answers in radio and checkbox groups by question index and optionally submit the quiz. Returns the number of answers that changed the selected controls, the total requested, and the unanswered question indices.
 
 ## `browser_cache_stats`
 
@@ -116,7 +116,7 @@ Navigate forward in history.
 
 ## `browser_generate_playwright_test`
 
-Generate a replayable Playwright test script from the recorded actions in this session. Returns a .spec.js file content. Call browser_clear_recording first to start a fresh recording.
+Call `browser_clear_recording` before the workflow to capture its starting URL. Save the generated script as a `.spec.js` file and run it with `node <filename>`. Run `npm install playwright` in the containing project and `npx playwright install chromium` to install the dependencies.
 
 ## `browser_get_captured_apis`
 
@@ -232,6 +232,8 @@ Control macro recording. Start recording user actions, stop and get the recorded
 
 Actions: `start`, `stop`, `clear`, `list`, `export`.
 
+Both `stop` and `export` accept `format` and `save`. The `json` and `actions` formats produce a replayable JSON array. Use `save: true` to write the selected format under `user_data/macros/` and receive its path. With `save: false`, the tool returns the content inline.
+
 ## `browser_reload`
 
 Reload the current page.
@@ -258,7 +260,7 @@ Scroll by direction and amount, to a selector or coordinates, or incrementally t
 
 ## `browser_search`
 
-Restricted to visual browser workflows (not general factual lookups); prefer hela-enzyme google_search. Search the web using DuckDuckGo (no CAPTCHA). Returns search results.
+Use `scope: "tools"` to find browser tools by exact or partial name. The default `scope: "web"` opens DuckDuckGo results in the active tab.
 
 ## `browser_select`
 
@@ -296,7 +298,7 @@ Switch to a specific tab by index.
 
 ## `browser_switch_to_new_tab`
 
-Detect and switch to a newly opened tab/popup. Returns the new tab URL and switches focus to it.
+Switch to a newly opened tab or wait for one. Returns its URL, title, and tab index.
 
 ## `browser_type`
 

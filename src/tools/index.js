@@ -35,6 +35,7 @@ const { resolveImageInput } = require('../core/image-input');
 
 const MAX_PAYLOAD_SUMMARY_LENGTH = 2000;
 const PAYLOAD_SUMMARY_SUFFIX = '\n… Full result in structuredContent.';
+const MACRO_DIR = path.join(__dirname, '../../user_data/macros');
 
 function payloadResult(summary, structuredContent, isError = false) {
     const text = summary.length > MAX_PAYLOAD_SUMMARY_LENGTH
@@ -152,11 +153,12 @@ const TOOLS = [
     },
     {
         name: 'browser_search',
-        description: 'Restricted to visual browser workflows (not general factual lookups); prefer hela-enzyme google_search. Search the web using DuckDuckGo (no CAPTCHA). Returns search results.',
+        description: 'Find browser tools by name or open DuckDuckGo results for a visual browser workflow.',
         inputSchema: {
             type: 'object',
             properties: {
-                query: { type: 'string', description: 'Search query' },
+                query: { type: 'string', minLength: 1, description: 'Web query or exact or partial browser tool name.' },
+                scope: { type: 'string', enum: ['web', 'tools'], default: 'web', description: 'Search the tool catalogue or navigate to DuckDuckGo.' },
             },
             required: ['query'],
         },
@@ -630,7 +632,7 @@ const TOOLS = [
     },
     {
         name: 'browser_switch_to_new_tab',
-        description: 'Detect and switch to a newly opened tab/popup. Returns the new tab URL and switches focus to it.',
+        description: 'Switch to a newly opened tab or wait for one. Returns its URL, title, and tab index.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -719,8 +721,8 @@ const TOOLS = [
             properties: {
                 action: { type: 'string', enum: ['start', 'stop', 'clear', 'list', 'export'] },
                 name: { type: 'string', description: 'Name for the macro (used in export/save).' },
-                format: { type: 'string', enum: ['playwright', 'json', 'actions'], default: 'playwright', description: 'Export format.' },
-                save: { type: 'boolean', default: false, description: 'Save to user_data/macros/ directory.' },
+                format: { type: 'string', enum: ['playwright', 'json', 'actions'], default: 'playwright', description: 'Format for stop or export. Both json and actions produce a replayable JSON action array.' },
+                save: { type: 'boolean', default: false, description: 'On stop or export, save under user_data/macros/ and return the path.' },
             },
             required: ['action'],
         },
@@ -908,7 +910,7 @@ const TOOLS = [
     // ── Test Generation ───────────────────────────────────────────────────────
     {
         name: 'browser_generate_playwright_test',
-        description: 'Generate a replayable Playwright test script from the recorded actions in this session. Returns a .spec.js file content. Call browser_clear_recording first to start a fresh recording.',
+        description: 'Generate a standalone Node.js Playwright script from the recorded actions. Call browser_clear_recording first to capture the starting URL. Run the generated file with node and have Playwright and Chromium installed.',
         inputSchema: {
             type: 'object',
             properties: {
@@ -1245,7 +1247,7 @@ async function clickTarget(page, args) {
                 } else {
                     await page.click(cached, { button, clickCount: count, delay });
                 }
-                recorder.record('click', { text, elType, selector: cached, button, count });
+                recorder.record('click', { text, elType, selector: cached, index: nth, button, count });
                 return { content: [{ type: 'text', text: `Clicked "${text}" (cache hit: ${cached}).` }] };
             } catch (_) {
                 cache.invalidate(hostname, cacheKey);
@@ -1265,7 +1267,7 @@ async function clickTarget(page, args) {
                 await page.click(selector, { button, clickCount: count, delay });
             }
             cache.set(hostname, cacheKey, selector);
-            recorder.record('click', { text, elType, selector, button, count });
+            recorder.record('click', { text, elType, selector, index: nth, button, count });
             return { content: [{ type: 'text', text: `Clicked element with text "${text}".` }] };
         } catch (e) {
             return { content: [{ type: 'text', text: `Failed to click text "${text}": ${e.message}` }], isError: true };
@@ -1340,7 +1342,10 @@ async function clickTarget(page, args) {
     }
 
     if (Number.isFinite(Number(args.x)) && Number.isFinite(Number(args.y))) {
-        await clickAt(Number(args.x), Number(args.y));
+        const x = Number(args.x);
+        const y = Number(args.y);
+        await clickAt(x, y);
+        recorder.record('click', { x, y, button, count });
         return { content: [{ type: 'text', text: `Clicked at (${args.x}, ${args.y}) with ${delay}ms delay.` }] };
     }
 
@@ -1723,6 +1728,12 @@ async function scrollPage(page, args) {
 
 async function handleToolCall(name, args = {}, targetPage) {
     ({ name, args } = normalizeToolCall(name, args));
+    if (name === 'browser_search' && args.scope === 'tools') {
+        const query = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
+        if (!query) return payloadResult('A tool name or partial name is required.', { results: [] }, true);
+        const results = TOOLS.filter(tool => tool.name.toLowerCase().includes(query));
+        return payloadResult(results.map(tool => tool.name).join('\n') || 'No matching browser tools.', { results });
+    }
     const page = name === 'browser_image_analyze' ? null : (targetPage ?? await getPage());
 
     switch (name) {
@@ -2605,97 +2616,60 @@ async function handleToolCall(name, args = {}, targetPage) {
         }
 
         // ── Phase 3: Macro Recording ─────────────────────────────────────────
-        // Macros record browser actions and replay them later.
-        // Recording works by tagging the page — every browser_* call gets logged
-        // to the recorder module. On stop, we export as either a Playwright test
-        // script (for CI) or raw JSON (for replay).
         case 'browser_record_macro': {
-            const { action, name, format, save } = args;
+            const { action, name, format = 'playwright', save = false } = args;
 
-            if (action === 'start') {
-                recorder.clear();
-                // Tag the page so the handler knows to record actions
-                if (!page._macroRecording) {
-                    page._macroRecording = true;
-                    page._macroHandler = async (toolName, toolArgs) => {
-                        // Record all browser_ calls except record_macro itself
-                        if (toolName.startsWith('browser_') && toolName !== 'browser_record_macro') {
-                            recorder.record(toolName, toolArgs);
-                        }
-                    };
-                }
-                return { content: [{ type: 'text', text: 'Macro recording started. All browser actions will be captured.' }] };
+            if (action === 'start' || action === 'clear') {
+                recorder.clear(page.url());
+                const message = action === 'start' ? 'Macro recording started.' : 'Macro buffer cleared.';
+                return { content: [{ type: 'text', text: message }] };
             }
 
-            if (action === 'stop') {
-                page._macroRecording = false;
-                const actions = recorder.getActions();
-                const macroName = name || `macro-${Date.now()}`;
+            const actions = recorder.getActions();
+            if (action === 'list') return payloadResult(`${actions.length} actions in buffer.`, { actions });
 
-                let output;
-                if (format === 'json' || format === 'actions') {
-                    // JSON format preserves all action data for replay
-                    output = JSON.stringify(actions, null, 2);
-                } else {
-                    // Playwright format generates a runnable test script
-                    output = recorder.generate(macroName);
+            if (action === 'stop' || action === 'export') {
+                if (!['playwright', 'json', 'actions'].includes(format) || typeof save !== 'boolean') {
+                    return { content: [{ type: 'text', text: 'Expected a valid macro format and a boolean save flag.' }], isError: true };
+                }
+                const macroName = name || (action === 'stop' ? `macro-${Date.now()}` : 'macro');
+                const isPlaywright = format === 'playwright';
+                const script = isPlaywright ? recorder.generate(macroName, page.url()) : JSON.stringify(actions, null, 2);
+                if (!script) return payloadResult('No actions recorded.', { actions, script });
+
+                if (!save) {
+                    const summary = action === 'stop' ? `${actions.length} actions recorded.` : script;
+                    return payloadResult(summary, { actions, script });
                 }
 
-                if (save) {
-                    let safeName;
-                    try {
-                        safeName = safeFilename(macroName);
-                    } catch (e) {
-                        return { content: [{ type: 'text', text: `Invalid macro name: ${e.message}` }], isError: true };
-                    }
-                    const dir = path.join(__dirname, '../../user_data/macros');
-                    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-                    const ext = format === 'json' ? 'json' : 'spec.js';
-                    const filePath = path.join(dir, `${safeName}.${ext}`);
-                    try {
-                        checkOutputPath(filePath);
-                    } catch (e) {
-                        return { content: [{ type: 'text', text: `Macro path blocked: ${e.message}` }], isError: true };
-                    }
-                    fs.writeFileSync(filePath, output);
+                try {
+                    const extension = isPlaywright ? 'spec.js' : 'json';
+                    const filePath = checkOutputPath(path.join(MACRO_DIR, `${safeFilename(macroName)}.${extension}`));
+                    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+                    fs.writeFileSync(filePath, script);
                     return payloadResult(`Macro saved: ${filePath}\n${actions.length} actions recorded.`, { filePath, actionCount: actions.length });
+                } catch (e) {
+                    return { content: [{ type: 'text', text: `Macro save failed: ${e.message}` }], isError: true };
                 }
-
-                return payloadResult(`${actions.length} actions recorded.`, { actions, script: output });
             }
 
-            if (action === 'clear') {
-                recorder.clear();
-                return { content: [{ type: 'text', text: 'Macro buffer cleared.' }] };
-            }
-
-            if (action === 'list') {
-                const actions = recorder.getActions();
-                return payloadResult(`${actions.length} actions in buffer.`, { actions });
-            }
-
-            if (action === 'export') {
-                const macroName = name || 'macro';
-                const output = recorder.generate(macroName);
-                return payloadResult(output || 'No actions recorded.', { script: output });
-            }
+            return { content: [{ type: 'text', text: `Unknown macro action: ${action}` }], isError: true };
         }
 
         case 'browser_replay_macro': {
             const { actions, macroName, speed, dryRun } = args;
             let actionList = actions;
 
-            // Load from file if macroName provided
             if (macroName && !actionList) {
-                const macroPath = path.join(__dirname, '../../user_data/macros', `${macroName}.json`);
-                if (fs.existsSync(macroPath)) {
+                try {
+                    const macroPath = checkInputPath(path.join(MACRO_DIR, `${safeFilename(macroName)}.json`));
                     actionList = JSON.parse(fs.readFileSync(macroPath, 'utf8'));
-                } else {
-                    return { content: [{ type: 'text', text: `Macro not found: ${macroPath}` }], isError: true };
+                } catch (e) {
+                    return { content: [{ type: 'text', text: `Could not load macro: ${e.message}` }], isError: true };
                 }
             }
 
-            if (!actionList || !actionList.length) {
+            if (!Array.isArray(actionList) || !actionList.length) {
                 return { content: [{ type: 'text', text: 'No actions to replay.' }], isError: true };
             }
 
@@ -2703,17 +2677,27 @@ async function handleToolCall(name, args = {}, targetPage) {
             const results = [];
 
             for (const action of actionList) {
+                const actionName = action?.type || action?.tool;
+                if (typeof actionName !== 'string' || !actionName.trim()) {
+                    results.push({ error: 'Each macro action requires a tool name.' });
+                    continue;
+                }
                 if (dryRun) {
-                    results.push({ action: action.type || action.tool, args: action.args, dryRun: true });
+                    results.push({ action: actionName, args: action.args, dryRun: true });
                     continue;
                 }
 
                 try {
-                    const toolName = action.type || action.tool;
-                    const toolArgs = action.args || action.parameters || {};
+                    const toolName = actionName.startsWith('browser_') ? actionName : `browser_${actionName}`;
+                    let toolArgs = action.args || action.parameters || {};
+                    if (actionName === 'click' && toolArgs.x !== undefined && toolArgs.y !== undefined) {
+                        const { x, y, button, count } = toolArgs;
+                        toolArgs = { x, y, button, count };
+                    } else if (actionName === 'click' && toolArgs.fallback) {
+                        toolArgs = { ...toolArgs, selector: toolArgs.fallback };
+                    }
 
-                    // Skip record_macro calls
-                    if (toolName === 'browser_record_macro') continue;
+                    if (toolName === 'browser_record_macro' || toolName === 'browser_replay_macro') continue;
 
                     // Execute via the tool handler
                     const result = await handleToolCall(toolName, toolArgs, targetPage);
@@ -2725,11 +2709,11 @@ async function handleToolCall(name, args = {}, targetPage) {
                         results.push({ action: toolName, success: true });
                     }
                 } catch (e) {
-                    results.push({ action: action.type || action.tool, error: e.message });
+                    results.push({ action: actionName, error: e.message });
                 }
             }
 
-            if (dryRun) return payloadResult(`Dry run: ${results.length} actions.`, { results });
+            if (dryRun) return payloadResult(`Dry run: ${results.length} actions.`, { results }, results.some(result => result.error));
             const succeeded = results.filter(result => result.success).length;
             return payloadResult(`Replayed ${results.length} actions (${succeeded} succeeded).`, { results }, succeeded !== results.length);
         }
@@ -2876,104 +2860,87 @@ async function handleToolCall(name, args = {}, targetPage) {
         // This is 10-20x faster than screenshot→analyze→click per question.
         case 'browser_batch_answer_quiz': {
             const { answers, submitAfter, nextSelector, submitSelector } = args;
-            const results = { answered: 0, errors: [], pages: [] };
+            if (!Array.isArray(answers)) {
+                return { content: [{ type: 'text', text: 'Answers must be an array.' }], isError: true };
+            }
+            const results = { answered: 0, total: answers.length, unanswered: [], errors: [], pages: [] };
 
-            // Auto-detect navigation buttons — supports Indonesian (Dicoding) and English
-            const nextBtn = nextSelector || 'button:has-text("Selanjutnya"), button:has-text("Next"), a:has-text("Selanjutnya"), a:has-text("Next")';
+            const next = page.locator(nextSelector || 'button:has-text("Selanjutnya"), button:has-text("Next"), a:has-text("Selanjutnya"), a:has-text("Next")').first();
             const submitBtn = submitSelector || 'button:has-text("Selesaikan"), button:has-text("Submit"), button:has-text("Kirim"), button[type="submit"]';
+            const attemptedOnPage = new Set();
+            let advanced = false;
 
-            for (const answer of answers) {
+            for (const [index, answer] of answers.entries()) {
+                const q = answer?.q;
                 try {
-                    const { q, option, options } = answer;
+                    if (!Number.isInteger(q) || q < 0) throw new Error('Question index must be a nonnegative integer.');
+                    const hasNextPage = await next.isVisible();
+                    const selection = await page.evaluate(async ({ q, option, options, paginated }) => {
+                        const groups = new Map();
+                        for (const input of document.querySelectorAll('input[type="radio"], input[type="checkbox"]')) {
+                            const key = `${input.type}:${input.name}`;
+                            if (!groups.has(key)) groups.set(key, []);
+                            groups.get(key).push(input);
+                        }
 
-                    // Discover all radio/checkbox groups on the current page.
-                    // Groups are identified by their `name` attribute — each question
-                    // typically has its own group name (e.g., "question_5").
-                    const inputInfo = await page.evaluate(() => {
-                        const groups = {};
-                        const radios = document.querySelectorAll('input[type="radio"]');
-                        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+                        const groupCount = groups.size;
+                        if (groupCount === 0) return { groupCount, error: 'No radio/checkbox inputs found' };
+                        const controls = Array.from(groups.values())[groupCount === 1 && paginated ? 0 : q];
+                        if (!controls) return { groupCount, error: 'Question index is out of range.' };
 
-                        radios.forEach(el => {
-                            const key = `radio:${el.name}`;
-                            if (!groups[key]) groups[key] = { name: el.name, type: 'radio', count: 0, checked: -1 };
-                            groups[key].count++;
-                            if (el.checked) groups[key].checked = groups[key].count - 1;
-                        });
+                        const type = controls[0].type;
+                        const indices = type === 'radio' ? [option] : options;
+                        if (!Array.isArray(indices) || indices.length === 0 ||
+                            indices.some(i => !Number.isInteger(i) || i < 0 || i >= controls.length)) {
+                            return { groupCount, error: `Invalid ${type} option indices.` };
+                        }
 
-                        checkboxes.forEach(el => {
-                            const key = `checkbox:${el.name}`;
-                            if (!groups[key]) groups[key] = { name: el.name, type: 'checkbox', count: 0, checked: [] };
-                            groups[key].count++;
-                            if (el.checked) groups[key].checked.push(groups[key].count - 1);
-                        });
+                        const selected = indices.map(i => controls[i]);
+                        const unchecked = selected.filter(input => !input.checked);
+                        if (unchecked.length === 0) return { groupCount, error: 'Requested options were already selected.' };
+                        for (const control of unchecked) {
+                            if (!control.checked) control.click();
+                        }
+                        await Promise.resolve();
 
-                        return Object.values(groups);
-                    });
+                        if (!selected.every(control => control.isConnected && control.checked)) {
+                            return { groupCount, error: 'Requested options did not become checked.' };
+                        }
+                        return { groupCount };
+                    }, { ...answer, paginated: advanced || hasNextPage });
 
-                    if (inputInfo.length === 0) {
-                        results.errors.push({ q, error: 'No radio/checkbox inputs found' });
-                        // Still try to advance — might be a non-input question page
-                        try {
-                            const next = page.locator(nextBtn).first();
-                            if (await next.isVisible({ timeout: 1500 })) {
-                                await next.click();
-                                await page.waitForTimeout(1500);
-                            }
-                        } catch (_) {}
-                        continue;
-                    }
-
-                    // Use first group — Dicoding shows one question per page
-                    const group = inputInfo[0];
-
-                    if (group.type === 'radio' && option !== undefined) {
-                        // Click radio by index and dispatch change event
-                        // (some frameworks only react to the event, not the click)
-                        await page.evaluate(({ name, idx }) => {
-                            const radios = document.querySelectorAll(`input[name="${name}"]`);
-                            if (radios[idx]) {
-                                radios[idx].click();
-                                radios[idx].dispatchEvent(new Event('change', { bubbles: true }));
-                            }
-                        }, { name: group.name, idx: option });
-                        results.answered++;
-                    } else if (group.type === 'checkbox' && options) {
-                        // Check multiple checkboxes by index array
-                        await page.evaluate(({ name, indices }) => {
-                            const boxes = document.querySelectorAll(`input[name="${name}"]`);
-                            indices.forEach(idx => {
-                                if (boxes[idx] && !boxes[idx].checked) {
-                                    boxes[idx].click();
-                                    boxes[idx].dispatchEvent(new Event('change', { bubbles: true }));
-                                }
-                            });
-                        }, { name: group.name, indices: options });
-                        results.answered++;
+                    if (selection.error) {
+                        results.unanswered.push(q);
+                        results.errors.push({ q, error: selection.error });
                     } else {
-                        results.errors.push({ q, error: `Type mismatch: ${group.type}` });
-                        continue;
+                        results.answered++;
                     }
 
-                    // Navigate to next question — wait for page transition
-                    try {
-                        const next = page.locator(nextBtn).first();
-                        if (await next.isVisible({ timeout: 2000 })) {
-                            await next.click();
+                    attemptedOnPage.add(q);
+                    const nextQuestion = answers[index + 1]?.q;
+                    const staysOnPage = selection.groupCount > 1 && Number.isInteger(nextQuestion) &&
+                        nextQuestion >= 0 && nextQuestion < selection.groupCount && !attemptedOnPage.has(nextQuestion);
+                    if (hasNextPage && !staysOnPage) {
+                        try {
+                            await next.click({ timeout: 3000 });
                             await page.waitForTimeout(1500);
                             results.pages.push(page.url());
+                            attemptedOnPage.clear();
+                            advanced = true;
+                        } catch (e) {
+                            results.errors.push({ q: 'next', error: e.message });
                         }
-                    } catch (_) {}
-
+                    }
                 } catch (e) {
-                    results.errors.push({ q: answer.q, error: e.message });
+                    results.unanswered.push(q ?? index);
+                    results.errors.push({ q, error: e.message });
                 }
             }
 
             if (submitAfter) {
                 try {
                     const submit = page.locator(submitBtn).first();
-                    if (await submit.isVisible({ timeout: 3000 })) {
+                    if (await submit.isVisible()) {
                         await submit.click();
                         await page.waitForTimeout(2000);
                         results.submitted = true;
@@ -2983,43 +2950,39 @@ async function handleToolCall(name, args = {}, targetPage) {
                 }
             }
 
-            return payloadResult(`Batch answered: ${results.answered}/${answers.length}.`, results, results.errors.length > 0);
+            const unanswered = results.unanswered.length ? `\nUnanswered questions: ${results.unanswered.join(', ')}.` : '';
+            return payloadResult(`Batch answered: ${results.answered}/${results.total}.${unanswered}`, results, results.errors.length > 0);
         }
 
         // ── Phase 2: Tab Awareness ───────────────────────────────────────────
         case 'browser_switch_to_new_tab': {
-            const ctx = await getPage().context();
-            const timeout = args.timeout || 10000;
-            const urlPattern = args.urlPattern;
-
-            const pagePromise = new Promise((resolve) => {
-                ctx.once('page', resolve);
-                setTimeout(() => {
-                    ctx.removeAllListeners('page');
-                    resolve(null);
-                }, timeout);
-            });
-
-            const newPage = await pagePromise;
-
-            if (!newPage) {
-                return { content: [{ type: 'text', text: `No new tab appeared within ${timeout}ms.` }], isError: true };
+            const ctx = await page.context();
+            const { timeout = 10000, urlPattern } = args;
+            if (!Number.isFinite(timeout) || timeout <= 0) {
+                return { content: [{ type: 'text', text: 'Tab timeout must be positive.' }], isError: true };
             }
 
-            try {
-                await newPage.waitForLoadState('domcontentloaded', { timeout: 5000 });
-            } catch (_) {}
-
-            const newUrl = newPage.url();
-
-            if (urlPattern && !newUrl.includes(urlPattern)) {
-                return { content: [{ type: 'text', text: `New tab URL "${newUrl}" doesn't match "${urlPattern}".` }], isError: true };
+            const matches = candidate => !candidate.isClosed() && (!urlPattern || candidate.url().includes(urlPattern));
+            const pages = ctx.pages();
+            let popup = pages.slice(pages.indexOf(page) + 1).reverse().find(matches);
+            if (!popup) {
+                try {
+                    popup = await ctx.waitForEvent('page', { timeout, predicate: matches });
+                } catch (error) {
+                    if (error.name !== 'TimeoutError') throw error;
+                    const description = urlPattern ? ` matching "${urlPattern}"` : '';
+                    return { content: [{ type: 'text', text: `No new tab${description} appeared within ${timeout}ms.` }], isError: true };
+                }
             }
 
-            const name = `popup-${Date.now()}`;
-            await createNamedPage(name, newPage);
-
-            return { content: [{ type: 'text', text: `New tab: ${newUrl} (registered as "${name}")` }] };
+            await popup.waitForLoadState('domcontentloaded', { timeout: 5000 });
+            const title = await popup.title();
+            const url = popup.url();
+            const index = ctx.pages().indexOf(popup);
+            if (!await switchPage(index)) {
+                return { content: [{ type: 'text', text: 'The new tab closed before switching.' }], isError: true };
+            }
+            return payloadResult(`Switched to tab ${index}: ${title} (${url}).`, { url, title, index });
         }
 
         // Request Interception
@@ -3365,23 +3328,24 @@ async function handleToolCall(name, args = {}, targetPage) {
 
         // Test generation
         case 'browser_generate_playwright_test': {
-            const script = recorder.generate(args.testName || 'recorded_session');
+            const script = recorder.generate(args.testName || 'recorded_session', page.url());
             if (!script) return { content: [{ type: 'text', text: 'No actions recorded. Interact with the browser first.' }] };
             if (args.outputPath) {
+                let filePath;
                 try {
-                    checkOutputPath(args.outputPath);
+                    filePath = checkOutputPath(args.outputPath);
                 } catch (e) {
                     return { content: [{ type: 'text', text: `Output path blocked: ${e.message}` }], isError: true };
                 }
-                const dir = path.dirname(args.outputPath);
-                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-                fs.writeFileSync(args.outputPath, script);
-                return { content: [{ type: 'text', text: `Playwright test saved to ${args.outputPath}\n\n${script}` }] };
+                fs.mkdirSync(path.dirname(filePath), { recursive: true });
+                fs.writeFileSync(filePath, script);
+                const quotedPath = "'" + filePath.replace(/'/g, "'\\''") + "'";
+                return { content: [{ type: 'text', text: `Playwright test saved to ${filePath}\nRun with: node -- ${quotedPath}\n\n${script}` }] };
             }
             return { content: [{ type: 'text', text: script }] };
         }
         case 'browser_clear_recording': {
-            recorder.clear();
+            recorder.clear(page.url());
             return { content: [{ type: 'text', text: 'Recording cleared. Subsequent actions will be recorded fresh.' }] };
         }
 
