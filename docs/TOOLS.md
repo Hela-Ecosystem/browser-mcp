@@ -88,7 +88,7 @@ Drag from source to target.
 
 ## `browser_emulate`
 
-Emulate network conditions, CPU throttling, geolocation, locale, timezone, and color scheme.
+Emulate network conditions, CPU throttling, geolocation, locale, timezone, and color scheme. Locale also sets navigator.language, navigator.languages, and the Accept-Language header; the reply reports the language the page actually sees.
 
 ## `browser_evaluate`
 
@@ -100,7 +100,7 @@ Export the current page state (URL, title, headings, text, interactive elements,
 
 ## `browser_extract_schema`
 
-Extract structured data from the page matching a JSON schema. Provide a schema object with property names and descriptions — the tool scrapes the page and returns a typed JSON object. More reliable than text extraction for structured data (prices, tables, forms, product info).
+Extract structured data from the page matching a JSON schema. Provide a schema object with property names and descriptions. Reads JSON-LD (application/ld+json) and itemprop microdata first, then HTML tables, and only falls back to the keyword heuristic for properties those sources cannot resolve. More reliable than text extraction for structured data (prices, tables, forms, product info).
 
 ## `browser_extract_table`
 
@@ -132,7 +132,7 @@ Get cookies for the active page. Values are redacted by default; set includeValu
 
 ## `browser_get_state`
 
-Capture the current page state: URL, title, headings, text blocks, interactive elements (with ref numbers), AX tree, popups, and CAPTCHA status. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.
+Capture the current page state: URL, title, headings, text blocks (text plus a textBlocks array), interactive elements (with ref numbers, including checked state and name for checkboxes/radios), AX tree, popups, and CAPTCHA status. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.
 
 ## `browser_handle_captcha`
 
