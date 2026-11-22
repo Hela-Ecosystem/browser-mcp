@@ -27,7 +27,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { validateURL, resolveAndValidate } = require('../utils/url-validator');
-const { checkOutputPath, safeFilename } = require('../utils/path-guard');
+const { shapeCookies, cookiesForPage, resolveUploadPaths } = require('../utils/cookie-scope');
+
+const { checkOutputPath, checkInputPath, safeFilename, getWorkspaceRoots } = require('../utils/path-guard');
 const { resolveImageInput } = require('../core/image-input');
 
 /**
@@ -425,9 +427,15 @@ const TOOLS = [
     },
     {
         name: 'browser_get_cookies',
-        description: 'Get current browser cookies for the active page.',
+        description: 'Get cookies for the active page. Values are redacted by default; set includeValues:true to see them and allDomains:true to read the whole profile (both must be justified by the caller).',
         annotations: { readOnlyHint: true },
-        inputSchema: { type: 'object', properties: {} },
+        inputSchema: {
+            type: 'object',
+            properties: {
+                includeValues: { type: 'boolean', default: false, description: 'Return cookie values instead of [redacted].' },
+                allDomains: { type: 'boolean', default: false, description: 'Return the whole profile jar instead of the active page only.' },
+            },
+        },
     },
     {
         name: 'browser_evaluate',
@@ -2101,8 +2109,11 @@ async function handleToolCall(name, args = {}) {
             return { content: [{ type: 'text', text: `PDF saved to ${outputPath} (${(pdf.length / 1024).toFixed(1)} KB) [sha256:${art.sha256}]` }] };
         }
         case 'browser_get_cookies': {
-            const cookies = await page.context().cookies();
-            return { content: [{ type: 'text', text: JSON.stringify({ cookies }, null, 2) }] };
+            const shaped = await cookiesForPage(page.context(), page.url(), {
+                includeValues: args.includeValues === true,
+                allDomains: args.allDomains === true,
+            });
+            return { content: [{ type: 'text', text: JSON.stringify(shaped, null, 2) }] };
         }
         case 'browser_evaluate': {
             if (process.env.HELA_BROWSER_ALLOW_EVAL !== 'true') {
@@ -2231,8 +2242,10 @@ async function handleToolCall(name, args = {}) {
                 return { content: [{ type: 'text', text: `Session path blocked: ${e.message}` }], isError: true };
             }
 
-            const cookies = await page.context().cookies();
-            const sessionData = { cookies };
+            const shaped = await cookiesForPage(page.context(), page.url(), {
+                includeValues: args.includeCookieValues === true,
+            });
+            const sessionData = { cookies: shaped.cookies, cookieScope: shaped.scope };
 
             if (args.includeStorage) {
                 sessionData.storage = await page.evaluate(() => ({
@@ -2332,7 +2345,11 @@ async function handleToolCall(name, args = {}) {
                 });
             }
 
-            state.cookies = await page.context().cookies();
+            const exportedCookies = await cookiesForPage(page.context(), page.url(), {
+                includeValues: args.includeCookieValues === true,
+            });
+            state.cookies = exportedCookies.cookies;
+            state.cookieScope = exportedCookies.scope;
 
             if (!args.includeAxTree) delete state.axTree;
 
@@ -3439,9 +3456,15 @@ async function handleToolCall(name, args = {}) {
 
         // ── New Tools: File Upload ──────────────────────────────────────────────
         case 'browser_upload': {
-            const files = args.filePath.split(',').map(f => f.trim()).filter(Boolean);
+            const requested = args.filePath.split(',').map(f => f.trim()).filter(Boolean);
+            let files;
+            try {
+                files = resolveUploadPaths(requested);
+            } catch (error) {
+                return { content: [{ type: 'text', text: JSON.stringify({ ok: false, error: error.message }, null, 2) }], isError: true };
+            }
             await page.setInputFiles(args.selector, files);
-            return { content: [{ type: 'text', text: 'Uploaded ' + files.length + ' file(s) to ' + args.selector + '.' }] };
+            return { content: [{ type: 'text', text: 'Uploaded ' + files.length + ' file(s) to ' + args.selector + '.', ...(files.length ? {} : {}) }] };
         }
 
         // ── New Tools: Visual Debug ─────────────────────────────────────────────
