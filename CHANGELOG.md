@@ -1,3 +1,9 @@
+## [3.3.5] - 2026-11-22
+
+### Changed
+- Vision boxes carry their units. `bbox` is normalised 0-1, `bboxPx` is the same box in source pixels, and the response includes `image: {width, height}` plus `coordinateSpace: "normalised-0-1"`. Applies to `browser_image_analyze`, `browser_visual_analyze` and `browser_ocr` lines. Previously `bbox` was normalised but named as if it were pixels, so an element 48 px tall reported coordinates up to 971. (`browser-mcp#19`)
+- **Shape change:** the preprocessed OCR image, previously returned as `image` when `returnImage: true`, is now `imageBase64`, because `image` carries the pixel dimensions every box refers to.
+
 ## [3.3.4] - 2026-11-22
 
 ### Fixed
