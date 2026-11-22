@@ -17,6 +17,7 @@ const {
     getConsoleMessages, getNetworkRequests, clearConsoleMessages, clearNetworkRequests,
     healthCheck,
 } = require('../core/browser');
+const { structureTable } = require('../utils/table-structure.js');
 const { RecaptchaSolver } = require('../core/recaptcha');
 const mirage = require('../core/mirage');
 const { captureState, observeInteractable, getElementByRef } = require('../core/state');
@@ -2134,26 +2135,29 @@ async function handleToolCall(name, args = {}) {
             return { content: [{ type: 'text', text: output }] };
         }
         case 'browser_extract_table': {
-            const data = await page.evaluate(({ sel, hasHeader }) => {
+            const extracted = await page.evaluate(({ sel }) => {
                 const table = document.querySelector(sel);
                 if (!table) return null;
                 const rows = Array.from(table.querySelectorAll('tr'));
-                return rows.map(row => Array.from(row.querySelectorAll('td, th')).map(cell => cell.innerText.trim()));
-            }, { sel: args.selector, hasHeader: args.header });
-            
-            if (!data) return { content: [{ type: 'text', text: 'Table not found.' }] };
-            
-            if (args.header && data.length > 0) {
-                const headers = data[0];
-                const body = data.slice(1);
-                const structured = body.map(row => {
-                    const obj = {};
-                    headers.forEach((h, i) => { obj[h || `col${i}`] = row[i]; });
-                    return obj;
-                });
-                return { content: [{ type: 'text', text: JSON.stringify({ table: structured }, null, 2) }] };
-            }
-            return { content: [{ type: 'text', text: JSON.stringify({ table: data }, null, 2) }] };
+                const first = rows[0];
+                const firstRowIsHeader = Boolean(first) && (
+                    first.closest('thead') !== null || first.querySelector('th') !== null
+                );
+                return {
+                    firstRowIsHeader,
+                    rows: rows.map(row => Array.from(row.querySelectorAll('td, th')).map(cell => cell.innerText.trim())),
+                };
+            }, { sel: args.selector });
+
+            if (!extracted) return { content: [{ type: 'text', text: 'Table not found.' }] };
+
+            // `false` is the only opt-out: the schema promises true by default and
+            // JSON-Schema defaults are not applied here (browser-mcp#20).
+            const shaped = structureTable(extracted.rows, {
+                header: args.header,
+                firstRowIsHeader: extracted.firstRowIsHeader,
+            });
+            return { content: [{ type: 'text', text: JSON.stringify(shaped, null, 2) }] };
         }
         case 'browser_state_diff': {
             const last = getLastSnapshot();
