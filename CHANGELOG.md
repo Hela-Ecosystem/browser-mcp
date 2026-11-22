@@ -1,3 +1,12 @@
+## [3.3.3] - 2026-11-22
+
+### Fixed
+- `browser_switch_to_new_tab` no longer crashes: the page is awaited before its context is read, and the result reports the tab url, title and index. (`browser-mcp#25`)
+- `batch_answer_quiz` counts an answer only when the control actually changed, reports the true answered/total and lists the unanswered questions.
+- Macro export honours `format` and `save`: content is returned when save is false, written under `user_data/macros/` with the matching extension when true, and an unknown action is an error instead of a silent no-op.
+- Generated tests are runnable: the emitted Playwright script carries a shebang and a run instruction.
+- `browser_search` with `scope: "tools"` searches the tool catalogue and finds exact and partial tool names; the web-search scope is unchanged.
+
 ## [3.3.2] - 2026-11-22
 
 ### Added

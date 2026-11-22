@@ -1,6 +1,6 @@
 {
   "name": "general-browser-agent-mcp",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "license": "MIT",
   "description": "General-purpose browser automation agent exposed as an MCP server",
   "main": "src/server.js",
