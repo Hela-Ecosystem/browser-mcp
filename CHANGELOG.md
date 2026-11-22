@@ -1,3 +1,8 @@
+## [3.3.7] - 2026-11-23
+
+### Fixed
+- `browser_network_requests` distinguishes a mock-served request from real traffic: the readable line appends `[MOCKED <pattern>]` and the entry carries `mocked:true` + `matchingPattern`; `mockedOnly`/`realOnly` filters select one class; `browser_get_state` and `browser_health` expose the active mock count so a session that forgot to clear them is visible. (`browser-mcp#21`)
+
 ## [3.3.6] - 2026-11-23
 
 ### Fixed
