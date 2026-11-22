@@ -1,1 +1,1 @@
-module.exports = { SERVER_VERSION: '3.2.6' };
+module.exports = { SERVER_VERSION: '3.3.0' };

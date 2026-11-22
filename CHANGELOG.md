@@ -1,3 +1,9 @@
+## [3.3.0] - 2026-11-22
+
+### Changed
+- `browser_get_cookies`, `save_session` and `export_state` are scoped to the active page and redact values by default. `includeValues` and `allDomains` are explicit widenings; a page with no http(s) origin returns nothing instead of the profile jar. `browser_upload` resolves real paths and refuses anything outside `HELA_ALLOWED_ROOTS` (default cwd), symlink-safe, with `HELA_BROWSER_UPLOAD_ANY=true` as the documented escape hatch. (`browser-mcp#22`)
+- `browser_extract_table` honours its `header` default. JSON-Schema defaults are not applied server-side, so `undefined` previously meant "flat"; now only `header:false` opts out. A first row is consumed as headers only when it really is one (`<th>`/`<thead>`), duplicate and blank column names are disambiguated, and the response includes `headers` plus a note when no header row exists. (`browser-mcp#20`)
+
 ## [3.2.6] - 2026-11-19
 
 ### Fixed
