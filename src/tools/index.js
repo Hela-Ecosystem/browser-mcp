@@ -153,7 +153,7 @@ const TOOLS = [
     },
     {
         name: 'browser_search',
-        description: 'Find browser tools by name or open DuckDuckGo results for a visual browser workflow.',
+        description: 'Restricted to visual browser workflows (not general factual lookups; prefer hela-enzyme google_search). With scope "tools" it searches the local tool catalogue by name; otherwise it opens DuckDuckGo results.',
         inputSchema: {
             type: 'object',
             properties: {

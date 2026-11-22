@@ -1,3 +1,8 @@
+## [3.3.4] - 2026-11-22
+
+### Fixed
+- `browser_search` keeps its restricted wording (the ecosystem boundary check asserts it) while documenting the `scope: "tools"` mode added in 3.3.3.
+
 ## [3.3.3] - 2026-11-22
 
 ### Fixed
