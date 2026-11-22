@@ -1,3 +1,12 @@
+## [3.3.2] - 2026-11-22
+
+### Added
+- `browser_list_dialogs` returns the last 100 JavaScript dialogs on the active page with type, message and the action taken (76 tools).
+
+### Fixed
+- JavaScript dialogs are no longer auto-accepted. One per-page policy dismisses `confirm` and `beforeunload`, accepts `alert`, and dismisses `prompt` unless the caller supplied text; `browser_dialog` sets the action for the next dialog instead of racing a second handler, and `promptText` is actually typed. Verified live: default `confirm` returns false, `browser_dialog accept` returns true, default `prompt` returns null and returns "Grace" after `promptText`. (`browser-mcp#23`)
+- `browser_dismiss_popups` never clicks an affirmative control: it prefers a close control, then a reject/decline/only-necessary label, and reports the label it clicked or that none was found. Previously it clicked `.swal2-confirm` and Accept all. (`browser-mcp#23`)
+
 ## [3.3.1] - 2026-11-22
 
 ### Fixed
