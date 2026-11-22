@@ -87,6 +87,12 @@ const pageNetworkLog = new WeakMap(); // page → Request[]
 const pageDialogs = new WeakMap(); // page → dialog history and next action
 const MAX_LOG_ENTRIES = 100;
 
+// Provenance for synthetic traffic. Requests answered by a mock rule are keyed
+// by their Playwright Request object so the response handler can tag the log
+// entry; the entry is consumed (deleted) as soon as the response arrives.
+const mockedRequestPatterns = new Map(); // Request → pattern
+const pageMockPatterns = new Map();      // page → Set<pattern> (page.route mocks)
+
 // Build Chromium launch options with anti-detection flags.
 // Key flags:
 // - --disable-blink-features=AutomationControlled: removes navigator.webdriver flag
@@ -500,14 +506,23 @@ function setupPage(page) {
         const req = resp.request();
         const start = reqStartTimes.get(req) || Date.now();
         reqStartTimes.delete(req);
+        const matchingPattern = mockedRequestPatterns.get(req);
+        if (matchingPattern !== undefined) mockedRequestPatterns.delete(req);
         netLog.push({
             method: req.method(),
             url: req.url(),
             status: resp.status(),
             contentType: (resp.headers()['content-type'] || '').split(';')[0].trim(),
             duration: Date.now() - start,
+            ...(matchingPattern !== undefined ? { mocked: true, matchingPattern } : {}),
         });
         if (netLog.length > MAX_LOG_ENTRIES) netLog.shift();
+    });
+    // Aborted requests never produce a response: drop their pending provenance
+    // and start time so a long session cannot accumulate stale entries.
+    page.on('requestfailed', req => {
+        reqStartTimes.delete(req);
+        mockedRequestPatterns.delete(req);
     });
 }
 
@@ -627,6 +642,8 @@ async function closeBrowser() {
         browserContext = null;
         activePage = null;
         activeRoutes.clear();
+        mockedRequestPatterns.clear();
+        pageMockPatterns.clear();
         namedPages.clear();
     }
     // Clear saved state so we start fresh next time
@@ -634,6 +651,44 @@ async function closeBrowser() {
 }
 
 // ── Request Interception ───────────────────────────────────────────────────────
+
+/**
+ * Record that a request is answered by `pattern` instead of the network. Called
+ * before fulfilling so the response handler already knows the provenance.
+ */
+function markRequestMocked(request, pattern) {
+    mockedRequestPatterns.set(request, pattern);
+}
+
+/** Register a page.route mock so it is visible to listMockRoutes/health. */
+function registerPageMock(page, pattern) {
+    let patterns = pageMockPatterns.get(page);
+    if (!patterns) pageMockPatterns.set(page, patterns = new Set());
+    patterns.add(pattern);
+}
+
+/** Forget page.route mocks for one page (or all pages when omitted). */
+function clearPageMocks(page) {
+    if (page) pageMockPatterns.delete(page);
+    else pageMockPatterns.clear();
+}
+
+/** Every mock rule currently able to answer a request, across both scopes. */
+function listMockRoutes() {
+    const routes = [];
+    for (const [pattern, config] of activeRoutes) {
+        if (config.action !== 'mock') continue;
+        routes.push({ pattern, scope: 'context', status: config.options?.status ?? 200 });
+    }
+    for (const [page, patterns] of pageMockPatterns) {
+        if (page.isClosed && page.isClosed()) {
+            pageMockPatterns.delete(page);
+            continue;
+        }
+        for (const pattern of patterns) routes.push({ pattern, scope: 'page' });
+    }
+    return routes;
+}
 
 async function addRoute(pattern, action, options = {}) {
     const ctx = await getBrowserContext();
@@ -643,6 +698,7 @@ async function addRoute(pattern, action, options = {}) {
     await ctx.route(pattern, (route) => {
         if (action === 'block') return route.abort();
         if (action === 'mock') {
+            markRequestMocked(route.request(), pattern);
             return route.fulfill({
                 status: options.status ?? 200,
                 contentType: options.contentType ?? 'application/json',
@@ -664,6 +720,9 @@ async function clearRoutes() {
         await ctx.unroute(pattern).catch(() => {});
     }
     activeRoutes.clear();
+    // Drop any flag for a request that has not answered yet: once the rules are
+    // gone nothing new can be synthetic, so the log must not keep claiming it.
+    mockedRequestPatterns.clear();
     await saveState();
 }
 
@@ -684,7 +743,13 @@ async function healthCheck() {
         headless: CONFIG.headless,
         executablePath: CONFIG.executablePath || (CONFIG.channel ? `channel:${CONFIG.channel}` : 'playwright-bundled'),
         launchRetries: CONFIG.launchRetries,
+        // Exposed unconditionally: rules outlive liveness, and a dead page is
+        // exactly when knowing about leftover mocks matters most.
+        mockRouteCount: 0,
+        mockRoutes: [],
     };
+    info.mockRoutes = listMockRoutes();
+    info.mockRouteCount = info.mockRoutes.length;
     try {
         const ctx = await getBrowserContext();
         const pages = ctx.pages();
@@ -722,6 +787,10 @@ module.exports = {
     addRoute,
     clearRoutes,
     listRoutes,
+    listMockRoutes,
+    markRequestMocked,
+    registerPageMock,
+    clearPageMocks,
     saveState,
     rotateSnapshot,
     saveSnapshot,

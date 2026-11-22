@@ -147,8 +147,8 @@ browser_assert({ type: "url", target: "/dashboard" })
 | `browser_evaluate` | Execute JavaScript in the page context (supports `return`, `await`, and `args` injection) |
 | `browser_print_to_pdf` | Save the page as a PDF file to a specified path |
 | `browser_console_messages` | Return captured browser console messages and JS errors (last 100). Filter by `type`. Pass `clear: true` to flush. |
-| `browser_network_requests` | Return captured network requests with status and timing (last 100). Filter by URL substring or `statusMin`. |
-| `browser_health` | Check browser health: context alive, page responsive, latency, active URL. Use to diagnose crashes or unresponsive pages. |
+| `browser_network_requests` | Return captured network requests with status and timing (last 100). Filter by URL substring, `statusMin`, `mockedOnly`, or `realOnly`. Requests served by a mock/intercept rule are marked `[MOCKED pattern]`. |
+| `browser_health` | Check browser health: context alive, page responsive, latency, active URL, and the active mock-rule count. Use to diagnose crashes, unresponsive pages, or mocks a session forgot to clear. |
 
 **`browser_evaluate` usage:**
 ```js

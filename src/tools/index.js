@@ -11,6 +11,7 @@ const {
     getPage, closeBrowser, listPages, switchPage, newPage,
     getBrowserContext,
     addRoute, clearRoutes, listRoutes,
+    listMockRoutes, markRequestMocked, registerPageMock, clearPageMocks,
     createNamedPage, getNamedPage, switchToNamedPage, removeNamedPage, listNamedPages,
     saveState,
     rotateSnapshot, saveSnapshot, getCurrSnapshot, getLastSnapshot,
@@ -380,7 +381,7 @@ const TOOLS = [
     // ── Observation ───────────────────────────────────────────────────────────
     {
         name: 'browser_get_state',
-        description: 'Capture the current page state: URL, title, headings, text blocks (text plus a textBlocks array), interactive elements (with ref numbers, including checked state and name for checkboxes/radios), AX tree, popups, and CAPTCHA status. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.',
+        description: 'Capture the current page state: URL, title, headings, text blocks (text plus a textBlocks array), interactive elements (with ref numbers, including checked state and name for checkboxes/radios), AX tree, popups, CAPTCHA status, and any active mock/intercept rules. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.',
         annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
@@ -803,7 +804,7 @@ const TOOLS = [
     // ── Health & Diagnostics ───────────────────────────────────────────────────
     {
         name: 'browser_health',
-        description: 'Check browser health: context alive, page responsive, page count, active URL, and evaluate latency. Read-only. Use to diagnose crashes, zombie contexts, or unresponsive pages.',
+        description: 'Check browser health: context alive, page responsive, page count, active URL, evaluate latency, and the number of active mock/intercept rules (mockRouteCount). Read-only. Use to diagnose crashes, zombie contexts, unresponsive pages, or mocks a session forgot to clear.',
         annotations: { readOnlyHint: true },
         inputSchema: { type: 'object', properties: {} },
     },
@@ -878,13 +879,15 @@ const TOOLS = [
     },
     {
         name: 'browser_network_requests',
-        description: 'Return captured network requests and their response status/timing (last 100). Useful for verifying API calls, detecting failed fetches, or inspecting what URLs are being hit. Read-only.',
+        description: 'Return captured network requests and their response status/timing (last 100). Useful for verifying API calls, detecting failed fetches, or inspecting what URLs are being hit. Requests answered by a mock/intercept rule are marked [MOCKED pattern] and carry mocked:true plus matchingPattern, so synthetic traffic is never mistaken for a real backend response. Read-only.',
         annotations: { readOnlyHint: true },
         inputSchema: {
             type: 'object',
             properties: {
                 filter: { type: 'string', description: 'Optional URL substring to filter results.' },
                 statusMin: { type: 'number', description: 'Only return requests with status >= this value (e.g. 400 for errors).' },
+                mockedOnly: { type: 'boolean', description: 'Only return requests answered by a mock/intercept rule.' },
+                realOnly: { type: 'boolean', description: 'Only return requests that reached the network (excludes mocked ones).' },
                 clear: { type: 'boolean', default: false, description: 'Clear the log after reading.' },
                 maxLines: { type: 'number', description: 'Maximum requests to return. Defaults to 100.' },
             },
@@ -1987,6 +1990,10 @@ async function handleToolCall(name, args = {}, targetPage) {
         case 'browser_get_state': {
             await rotateSnapshot();
             const state = await captureState(page);
+            const mockRoutes = listMockRoutes();
+            // Only surface mocks when they exist: a clean session should not pay
+            // tokens for a field that reads "none".
+            if (mockRoutes.length) state.mocks = { count: mockRoutes.length, routes: mockRoutes };
             await saveSnapshot(state);
             const content = [{ type: 'text', text: JSON.stringify(state, null, 2) }];
             if (args.screenshot) {
@@ -3301,17 +3308,25 @@ async function handleToolCall(name, args = {}, targetPage) {
             return { content: [{ type: 'text', text: lines.join('\n') + suffix }] };
         }
         case 'browser_network_requests': {
+            if (args.mockedOnly && args.realOnly) {
+                return { content: [{ type: 'text', text: 'mockedOnly and realOnly are mutually exclusive; pick one.' }], isError: true };
+            }
             let requests = getNetworkRequests(page);
             if (args.filter) requests = requests.filter(r => r.url.includes(args.filter));
             if (args.statusMin) requests = requests.filter(r => r.status >= args.statusMin);
+            if (args.mockedOnly) requests = requests.filter(r => r.mocked === true);
+            if (args.realOnly) requests = requests.filter(r => r.mocked !== true);
             if (args.clear) clearNetworkRequests(page);
-            if (!requests.length) return { content: [{ type: 'text', text: 'No network requests captured.' }] };
+            const mockRouteCount = listMockRoutes().length;
+            if (!requests.length) {
+                return payloadResult('No network requests captured.', { requests: [], total: 0, mockRouteCount });
+            }
             const maxLines = args.maxLines ?? 100;
             const truncated = requests.length > maxLines;
             const limited = requests.slice(0, maxLines);
-            const lines = limited.map(r => `[${r.status}] ${r.method} ${r.url} — ${r.duration}ms ${r.contentType ? '(' + r.contentType + ')' : ''}`);
+            const lines = limited.map(r => `[${r.status}] ${r.method} ${r.url} — ${r.duration}ms ${r.contentType ? '(' + r.contentType + ')' : ''}${r.mocked ? ` [MOCKED ${r.matchingPattern}]` : ''}`);
             const suffix = truncated ? `\n... (${requests.length - maxLines} more, increase maxLines to see all)` : '';
-            return { content: [{ type: 'text', text: lines.join('\n') + suffix }] };
+            return payloadResult(lines.join('\n') + suffix, { requests: limited, total: requests.length, truncated, mockRouteCount });
         }
 
         case 'browser_extract_schema': {
@@ -3424,13 +3439,16 @@ async function handleToolCall(name, args = {}, targetPage) {
             const contentType = args.contentType || 'application/json';
 
             await page.route(mockPattern, route => {
+                markRequestMocked(route.request(), mockPattern);
                 return route.fulfill({ status, contentType, body });
             });
+            registerPageMock(page, mockPattern);
 
             return { content: [{ type: 'text', text: 'Network mock active: ' + mockPattern + ' → ' + status }] };
         }
         case 'browser_clear_mocks': {
             await page.unrouteAll();
+            clearPageMocks(page);
             return { content: [{ type: 'text', text: 'All network mocks cleared.' }] };
         }
 

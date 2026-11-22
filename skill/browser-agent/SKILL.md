@@ -70,7 +70,7 @@ This browser agent works best paired with other MCPs for full power:
 | Clear intercepts | `browser_clear_intercepts()` | — |
 | Dismiss modal | `browser_dismiss_popups()` | `browser_evaluate("el.remove()")` |
 | Console logs / JS errors (source-mapped) | `browser_console_messages(type='error', maxLines=200)` | — |
-| Network request log | `browser_network_requests(filter, statusMin=400, maxLines=200)` | — |
+| Network request log (mocks flagged `[MOCKED pattern]`) | `browser_network_requests(filter, statusMin=400, mockedOnly, realOnly, maxLines=200)` | — |
 | Browser health check | `browser_health()` | — |
 | Structured data extraction | `browser_extract_schema(schema)` | `browser_extract_table(selector)` |
 | Core Web Vitals + timing + memory | `browser_performance()` | — |
@@ -224,7 +224,7 @@ Screenshots consume significant tokens. Use them only when the AX tree is not en
 | Explicit visual verification (layout, images, CAPTCHA) | `browser_screenshot()` | ✔️ |
 | After action, check what changed | `browser_state_diff()` | ❌ |
 | Debug JS errors after interaction | `browser_console_messages(type='error')` | ❌ |
-| Verify API call was made | `browser_network_requests(filter='/api/')` | ❌ |
+| Verify real API call was made (not a mock) | `browser_network_requests(filter='/api/', realOnly=true)` | ❌ |
 
 **When AX tree is incomplete** (elements not appearing in `browser_observe` / `browser_get_state`):
 - Canvas-rendered UIs (charts, games, custom drawings)

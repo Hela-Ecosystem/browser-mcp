@@ -132,7 +132,7 @@ Get cookies for the active page. Values are redacted by default; set includeValu
 
 ## `browser_get_state`
 
-Capture the current page state: URL, title, headings, text blocks (text plus a textBlocks array), interactive elements (with ref numbers, including checked state and name for checkboxes/radios), AX tree, popups, and CAPTCHA status. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.
+Capture the current page state: URL, title, headings, text blocks (text plus a textBlocks array), interactive elements (with ref numbers, including checked state and name for checkboxes/radios), AX tree, popups, CAPTCHA status, and any active mock/intercept rules. Auto-saves snapshot for browser_state_diff. Pass screenshot=true to also include a visual screenshot — only do this when elements may be hidden from the AX tree (canvas, shadow DOM, iframes, visual-only widgets) or when layout context is needed.
 
 ## `browser_handle_captcha`
 
@@ -140,7 +140,7 @@ Detect and handle CAPTCHA. Default: clicks checkbox, detects challenge type, ret
 
 ## `browser_health`
 
-Check browser health: context alive, page responsive, page count, active URL, and evaluate latency. Read-only. Use to diagnose crashes, zombie contexts, or unresponsive pages.
+Check browser health: context alive, page responsive, page count, active URL, evaluate latency, and the number of active mock/intercept rules (mockRouteCount). Read-only. Use to diagnose crashes, zombie contexts, unresponsive pages, or mocks a session forgot to clear.
 
 ## `browser_highlight`
 
@@ -196,7 +196,7 @@ Navigate to a URL. Retries automatically on network failure. Auto-switches to Du
 
 ## `browser_network_requests`
 
-Return captured network requests and their response status/timing (last 100). Useful for verifying API calls, detecting failed fetches, or inspecting what URLs are being hit. Read-only.
+Return captured network requests and their response status/timing (last 100). Useful for verifying API calls, detecting failed fetches, or inspecting what URLs are being hit. Requests answered by a mock/intercept rule are marked [MOCKED pattern] and carry mocked:true plus matchingPattern, so synthetic traffic is never mistaken for a real backend response. Read-only.
 
 ## `browser_new_tab`
 
