@@ -84,6 +84,7 @@ const namedPages = new Map();   // name → Page
 
 const pageConsoleLog = new WeakMap(); // page → Message[]
 const pageNetworkLog = new WeakMap(); // page → Request[]
+const pageDialogs = new WeakMap(); // page → dialog history and next action
 const MAX_LOG_ENTRIES = 100;
 
 // Build Chromium launch options with anti-detection flags.
@@ -235,14 +236,12 @@ async function getBrowserContext() {
             activePage = null;
             namedPages.clear();
         });
+        browserContext.on('page', setupPage);
 
         // Start clean: close any tabs restored by Chrome's crash recovery
         const pages = browserContext.pages();
         for (let i = 1; i < pages.length; i++) {
             pages[i].close().catch(() => {});
-        }
-        if (pages[0] && pages[0].url() !== 'about:blank') {
-            pages[0].goto('about:blank').catch(() => {});
         }
         if (pages[0]) {
             activePage = pages[0];
@@ -250,6 +249,9 @@ async function getBrowserContext() {
             activePage = await browserContext.newPage();
         }
         setupPage(activePage);
+        if (pages[0] && pages[0].url() !== 'about:blank') {
+            pages[0].goto('about:blank').catch(() => {});
+        }
     }
     return browserContext;
 }
@@ -447,9 +449,28 @@ async function resolveSourceLocation(url, line, col) {
 }
 
 function setupPage(page) {
+    if (pageDialogs.has(page)) return;
+    const dialogs = { history: [], next: null };
+    pageDialogs.set(page, dialogs);
+
     page.on('dialog', async (dialog) => {
-        console.error(`[Browser] Native dialog [${dialog.type()}]: "${dialog.message()}" — auto-accepting`);
-        try { await dialog.accept(); } catch (_) {}
+        const type = dialog.type();
+        const next = dialogs.next;
+        dialogs.next = null;
+        const action = next?.action ?? (type === 'alert' ? 'accept' : 'dismiss');
+        const entry = { type, message: dialog.message(), action };
+        dialogs.history.push(entry);
+        if (dialogs.history.length > MAX_LOG_ENTRIES) dialogs.history.shift();
+
+        try {
+            if (action === 'accept') {
+                await dialog.accept(type === 'prompt' ? next?.promptText ?? '' : undefined);
+            } else {
+                await dialog.dismiss();
+            }
+        } catch (error) {
+            entry.error = error.message;
+        }
     });
 
     // Console capture with source-map resolution
@@ -490,6 +511,12 @@ function setupPage(page) {
     });
 }
 
+function setNextDialogAction(page, action, promptText) {
+    setupPage(page);
+    pageDialogs.get(page).next = { action, promptText };
+}
+
+function getDialogs(page) { return pageDialogs.get(page)?.history.slice() ?? []; }
 function getConsoleMessages(page) { return pageConsoleLog.get(page) || []; }
 function getNetworkRequests(page) { return pageNetworkLog.get(page) || []; }
 function clearConsoleMessages(page) { const log = pageConsoleLog.get(page); if (log) log.length = 0; }
@@ -700,6 +727,8 @@ module.exports = {
     saveSnapshot,
     getCurrSnapshot,
     getLastSnapshot,
+    setNextDialogAction,
+    getDialogs,
     getConsoleMessages,
     getNetworkRequests,
     clearConsoleMessages,

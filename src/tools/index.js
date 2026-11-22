@@ -14,6 +14,7 @@ const {
     createNamedPage, getNamedPage, switchToNamedPage, removeNamedPage, listNamedPages,
     saveState,
     rotateSnapshot, saveSnapshot, getCurrSnapshot, getLastSnapshot,
+    setNextDialogAction, getDialogs,
     getConsoleMessages, getNetworkRequests, clearConsoleMessages, clearNetworkRequests,
     healthCheck,
 } = require('../core/browser');
@@ -838,7 +839,7 @@ const TOOLS = [
     // ── Helpers ───────────────────────────────────────────────────────────────
     {
         name: 'browser_dismiss_popups',
-        description: 'Try to dismiss common popups and banners.',
+        description: 'Click visible close or reject controls in common popups and report their labels.',
         inputSchema: { type: 'object', properties: {} },
     },
 
@@ -987,15 +988,21 @@ const TOOLS = [
     // ── Dialog Handling ──────────────────────────────────────────────────────
     {
         name: 'browser_dialog',
-        description: 'Set up handler for JavaScript dialogs (alert, confirm, prompt). Call BEFORE the action that triggers the dialog.',
+        description: 'Set how the active page handles its next JavaScript dialog. Call before triggering the dialog. The default accepts alerts and dismisses confirms, prompts and beforeunload dialogs.',
         inputSchema: {
             type: 'object',
             properties: {
-                action: { type: 'string', enum: ['accept', 'dismiss'], description: 'How to handle the dialog' },
-                promptText: { type: 'string', description: 'Text to enter for window.prompt() dialogs' },
+                action: { type: 'string', enum: ['accept', 'dismiss'], description: 'Action to use for the next dialog.' },
+                promptText: { type: 'string', description: 'Text to enter when accepting a prompt.' },
             },
             required: ['action'],
         },
+    },
+    {
+        name: 'browser_list_dialogs',
+        description: 'List the last 100 JavaScript dialogs on the active page with their type, message and action.',
+        annotations: { readOnlyHint: true },
+        inputSchema: { type: 'object', properties: {} },
     },
 
     // ── File Upload ──────────────────────────────────────────────────────────
@@ -3207,29 +3214,36 @@ async function handleToolCall(name, args = {}, targetPage) {
                     return results;
                 }
 
+                const popupSelector = '.swal2-popup, .modal.show, [role="dialog"], [role="alertdialog"], [aria-modal="true"]';
+                const closeSelector = '[data-dismiss="modal"], [data-bs-dismiss="modal"], button.close, .btn-close, [aria-label="Close" i]';
+                const controlSelector = `.swal2-close, .swal2-cancel, ${closeSelector}, button, a, [role="button"], input[type="button"]`;
+                const dismissLabel = /^(?:[×✕✖✗]|close(?: (?:dialog|modal|popup))?|cancel|dismiss|reject(?: all)?(?: cookies)?|decline(?: all)?(?: cookies)?|only necessary(?: cookies)?|necessary only|tolak(?: semua)?|tutup|not now|no,? thanks)$/i;
+                const isVisible = element => element.getClientRects().length > 0 && getComputedStyle(element).visibility === 'visible';
+                const textOf = button => (button.innerText || button.value || '').trim().replace(/\s+/g, ' ');
+                const accessibleLabel = button => (button.getAttribute('aria-label') || button.title || '').trim();
+
                 const actions = [];
-                const swal = document.querySelector('.swal2-popup');
-                if (swal && swal.getBoundingClientRect().width > 0) {
-                    const btn = swal.querySelector('.swal2-confirm, .swal2-close, .swal2-cancel');
-                    if (btn) { btn.click(); actions.push('swal2'); }
-                }
-                querySelectorAllDeep('.modal.show, [role="dialog"], [aria-modal="true"]').forEach(m => {
-                    if (m.getBoundingClientRect().width === 0) return;
-                    // standard close buttons
-                    let close = m.querySelector('[data-dismiss="modal"], [data-bs-dismiss="modal"], button.close, .btn-close, [aria-label="Close"]');
-                    // generic agree/accept/close buttons
-                    if (!close) {
-                        const btns = Array.from(m.querySelectorAll('button, a'));
-                        close = btns.find(b => {
-                            const t = b.textContent.toLowerCase();
-                            return t.includes('setuju') || t.includes('agree') || t.includes('accept') || t.includes('got it') || t.includes('close');
+                for (const popup of querySelectorAllDeep(popupSelector)) {
+                    if (!isVisible(popup)) continue;
+                    const controls = Array.from(popup.querySelectorAll(controlSelector)).filter(button => (
+                        button.closest(popupSelector) === popup && typeof button.click === 'function' &&
+                        !button.closest('.swal2-confirm, [inert]') && !button.matches(':disabled, [aria-disabled="true"]') &&
+                        isVisible(button)
+                    ));
+                    const close = controls.find(button => button.matches('.swal2-close'))
+                        ?? controls.find(button => button.matches('.swal2-cancel'))
+                        ?? controls.find(button => {
+                            const label = textOf(button) || accessibleLabel(button);
+                            return label ? dismissLabel.test(label) : button.matches(closeSelector);
                         });
-                    }
-                    if (close) { close.click(); actions.push('modal'); }
-                });
+                    if (!close) continue;
+                    const label = textOf(close) || accessibleLabel(close) || 'Unlabeled close control';
+                    close.click();
+                    actions.push(label);
+                }
                 return actions;
             });
-            return { content: [{ type: 'text', text: dismissed.length ? `Dismissed: ${dismissed.join(', ')}` : 'No popups found.' }] };
+            return { content: [{ type: 'text', text: dismissed.length ? `Dismissed: ${dismissed.join(', ')}` : 'No popup close or reject controls found.' }] };
         }
 
         // Schema-typed extraction
@@ -3457,20 +3471,20 @@ async function handleToolCall(name, args = {}, targetPage) {
 
         // ── New Tools: Dialog Handling ──────────────────────────────────────────
         case 'browser_dialog': {
-            const dialogAction = args.action;
-            const promptText = args.promptText || '';
-
-            page.once('dialog', async (dialog) => {
-                try {
-                    if (dialogAction === 'accept') {
-                        await dialog.accept(promptText);
-                    } else {
-                        await dialog.dismiss();
-                    }
-                } catch (_) {}
-            });
-
-            return { content: [{ type: 'text', text: 'Dialog handler set to "' + dialogAction + '"' + (promptText ? ' with prompt text' : '') + '.' }] };
+            const { action, promptText } = args;
+            if (action !== 'accept' && action !== 'dismiss') {
+                return { content: [{ type: 'text', text: 'Dialog action must be "accept" or "dismiss".' }], isError: true };
+            }
+            if (promptText !== undefined && typeof promptText !== 'string') {
+                return { content: [{ type: 'text', text: 'Prompt text must be a string.' }], isError: true };
+            }
+            setNextDialogAction(page, action, promptText);
+            const prompt = action === 'accept' && promptText !== undefined ? ' with prompt text' : '';
+            return { content: [{ type: 'text', text: `Next dialog action set to "${action}"${prompt}.` }] };
+        }
+        case 'browser_list_dialogs': {
+            const dialogs = getDialogs(page);
+            return payloadResult(dialogs.length ? JSON.stringify(dialogs, null, 2) : 'No dialogs recorded.', { dialogs });
         }
 
         // ── New Tools: File Upload ──────────────────────────────────────────────

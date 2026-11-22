@@ -70,13 +70,13 @@ Return captured browser console messages and page errors (last 100). Useful for 
 
 ## `browser_dialog`
 
-Set up handler for JavaScript dialogs (alert, confirm, prompt). Call BEFORE the action that triggers the dialog.
+Set the action for the next JavaScript dialog on the active page. Call before triggering the dialog. Use `promptText` to supply text when accepting a prompt. By default, alerts are accepted and confirms, prompts, and beforeunload dialogs are dismissed.
 
 Actions: `accept`, `dismiss`.
 
 ## `browser_dismiss_popups`
 
-Try to dismiss common popups and banners.
+Click visible close or reject controls in common popups and report their labels.
 
 ## `browser_download_click`
 
@@ -169,6 +169,10 @@ Actions: `start`, `stop`, `get`.
 ## `browser_intercept_list`
 
 List all active request intercept rules.
+
+## `browser_list_dialogs`
+
+List the last 100 JavaScript dialogs on the active page with their type, message, and action.
 
 ## `browser_list_sessions`
 

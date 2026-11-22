@@ -60,16 +60,17 @@ const html = `<!doctype html>
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/`;
 
-  await t('registry advertises 75 tools with dedicated image perception', () => {
-    assert.equal(TOOLS.length, 75);
+  await t('registry advertises 76 tools including dialog history', () => {
+    assert.equal(TOOLS.length, 76);
     const names = TOOLS.map((tool) => tool.name);
     assert.equal(new Set(names).size, names.length);
+    assert.ok(names.includes('browser_list_dialogs'));
     for (const name of NEW_NAMES) assert.ok(names.includes(name), name);
     for (const name of OLD_NAMES) assert.ok(!names.includes(name), name);
   });
 
   await t('consolidated tools declare the intended side effects', () => {
-    for (const name of ['browser_get_content', 'browser_wait', 'browser_assert', 'browser_visual_analyze', 'browser_image_analyze']) {
+    for (const name of ['browser_get_content', 'browser_wait', 'browser_assert', 'browser_visual_analyze', 'browser_image_analyze', 'browser_list_dialogs']) {
       assert.deepEqual(sideEffectsFor(name), [], name);
     }
     assert.deepEqual(sideEffectsFor('browser_click'), ['browser-act']);

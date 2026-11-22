@@ -1,13 +1,13 @@
 # Browser-Agent
 
 <!-- hela:version:start -->
-**MCP server:** `hela-cytosol` · **Version:** `3.3.1` · **Canonical tools:** 75. [Current tool reference](docs/TOOLS.md).
+**MCP server:** `hela-cytosol` · **Version:** `3.3.1` · **Canonical tools:** 76. [Current tool reference](docs/TOOLS.md).
 <!-- hela:version:end -->
 
 
 > **Part of the [HeLa MCP Ecosystem](https://github.com/Hela-Ecosystem/hela-mcp-ecosystem)** — This server is **HeLa Cytosol (`hela-cytosol`)** — the *Browser Automation* component of the HeLa cellular architecture. See the [ecosystem docs](https://github.com/Hela-Ecosystem/hela-mcp-ecosystem) for profiles, workflows, and multi-client setup.
 
-A modular, production-ready browser automation agent implemented as a Model Context Protocol (MCP) server. Powered by Playwright, it provides **75 tools** for human-like web interaction, state analysis, automated navigation, dedicated image perception, and network-level control.
+A modular, production-ready browser automation agent implemented as a Model Context Protocol (MCP) server. Powered by Playwright, it provides **76 tools** for human-like web interaction, state analysis, automated navigation, dedicated image perception, and network-level control.
 
 Distributed under the MIT License; see [LICENSE](LICENSE).
 
@@ -228,7 +228,8 @@ browser_clear_mocks()
 | `browser_handle_captcha` | Detect and manage CAPTCHA with optional manual hand-off |
 | `browser_solve_captcha_grid` | Click specific grid cells in a visual CAPTCHA |
 | `browser_switch_to_new_tab` | Detect and switch to a newly opened tab/popup |
-| `browser_dialog` | Handle JavaScript `alert`, `confirm`, `prompt` dialogs (auto-dismissed by default) |
+| `browser_dialog` | Set the next JavaScript dialog action and optionally supply prompt text. By default, alerts are accepted and confirms, prompts, and beforeunload dialogs are dismissed. |
+| `browser_list_dialogs` | List the last 100 JavaScript dialogs on the active page with their type, message, and action. |
 | `browser_highlight` | Highlight element(s) by selector — visual debug overlay |
 | `browser_wait` | Use `condition: 'change'` to wait for a text or attribute change (SPA detection) |
 | `browser_close` | Terminate the browser session and clear all state |
@@ -257,7 +258,7 @@ browser_clear_mocks()
 
 | Tool | Description |
 |------|-------------|
-| `browser_dismiss_popups` | Suppress modals, banners, and dialogs |
+| `browser_dismiss_popups` | Click visible close or reject controls in common popups and report their labels. |
 | `browser_export_state` | Export current page state (URL/title/AX/cookies/storage) as a JSON snapshot for sharing or replay |
 
 ## Installation
