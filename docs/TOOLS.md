@@ -30,7 +30,7 @@ Navigate back in history.
 
 ## `browser_batch_answer_quiz`
 
-Select answers in radio and checkbox groups by question index and optionally submit the quiz. Returns the number of answers that changed the selected controls, the total requested, and the unanswered question indices.
+Batch answer multiple quiz questions in a single tool call. Navigates through pages, selects answers, and optionally submits. Handles radio and checkbox questions. Returns results with errors.
 
 ## `browser_cache_stats`
 
@@ -70,7 +70,7 @@ Return captured browser console messages and page errors (last 100). Useful for 
 
 ## `browser_dialog`
 
-Set the action for the next JavaScript dialog on the active page. Call before triggering the dialog. Use `promptText` to supply text when accepting a prompt. By default, alerts are accepted and confirms, prompts, and beforeunload dialogs are dismissed.
+Set how the active page handles its next JavaScript dialog. Call before triggering the dialog. The default accepts alerts and dismisses confirms, prompts and beforeunload dialogs.
 
 Actions: `accept`, `dismiss`.
 
@@ -116,7 +116,7 @@ Navigate forward in history.
 
 ## `browser_generate_playwright_test`
 
-Call `browser_clear_recording` before the workflow to capture its starting URL. Save the generated script as a `.spec.js` file and run it with `node <filename>`. Run `npm install playwright` in the containing project and `npx playwright install chromium` to install the dependencies.
+Generate a standalone Node.js Playwright script from the recorded actions. Call browser_clear_recording first to capture the starting URL. Run the generated file with node and have Playwright and Chromium installed.
 
 ## `browser_get_captured_apis`
 
@@ -128,7 +128,7 @@ Restricted to browser or JavaScript-rendered content; prefer hela-enzyme extract
 
 ## `browser_get_cookies`
 
-Get current browser cookies for the active page.
+Get cookies for the active page. Values are redacted by default; set includeValues:true to see them and allDomains:true to read the whole profile (both must be justified by the caller).
 
 ## `browser_get_state`
 
@@ -172,7 +172,7 @@ List all active request intercept rules.
 
 ## `browser_list_dialogs`
 
-List the last 100 JavaScript dialogs on the active page with their type, message, and action.
+List the last 100 JavaScript dialogs on the active page with their type, message and action.
 
 ## `browser_list_sessions`
 
@@ -232,8 +232,6 @@ Control macro recording. Start recording user actions, stop and get the recorded
 
 Actions: `start`, `stop`, `clear`, `list`, `export`.
 
-Both `stop` and `export` accept `format` and `save`. The `json` and `actions` formats produce a replayable JSON array. Use `save: true` to write the selected format under `user_data/macros/` and receive its path. With `save: false`, the tool returns the content inline.
-
 ## `browser_reload`
 
 Reload the current page.
@@ -260,7 +258,7 @@ Scroll by direction and amount, to a selector or coordinates, or incrementally t
 
 ## `browser_search`
 
-Use `scope: "tools"` to find browser tools by exact or partial name. The default `scope: "web"` opens DuckDuckGo results in the active tab.
+Restricted to visual browser workflows (not general factual lookups; prefer hela-enzyme google_search). With scope "tools" it searches the local tool catalogue by name; otherwise it opens DuckDuckGo results.
 
 ## `browser_select`
 
