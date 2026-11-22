@@ -46,6 +46,12 @@ See the General Browser Agent in action with Gemini CLI: [Watch on YouTube](http
 
 ## Toolset
 
+### Structured tool results
+
+API capture and retrieval return `structuredContent.responses`. Macro recording returns the `actions`, `script`, or saved-file details for the requested operation. Replay and parallel execution return `structuredContent.results`, with each completed parallel action's MCP response under `result`. Text and URL assertions, OCR, visual analysis, and batch quiz results expose their details directly in `structuredContent`.
+
+These responses cap the human-readable text summary at 2,000 UTF-16 code units, including the truncation notice. The structured payload retains its full value. Failed assertions and failed replay, parallel, or batch quiz operations set MCP `isError` and retain any available results and diagnostics.
+
 ### Navigation & Tabs
 
 | Tool | Description |

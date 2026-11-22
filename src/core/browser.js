@@ -552,6 +552,10 @@ async function switchToNamedPage(name) {
     return true;
 }
 
+function getNamedPage(name) {
+    return namedPages.get(name);
+}
+
 async function removeNamedPage(name) {
     if (!namedPages.has(name)) return false;
     const pg = namedPages.get(name);
@@ -684,6 +688,7 @@ module.exports = {
     switchPage,
     newPage,
     createNamedPage,
+    getNamedPage,
     switchToNamedPage,
     removeNamedPage,
     listNamedPages,

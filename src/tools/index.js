@@ -11,7 +11,7 @@ const {
     getPage, closeBrowser, listPages, switchPage, newPage,
     getBrowserContext,
     addRoute, clearRoutes, listRoutes,
-    createNamedPage, switchToNamedPage, removeNamedPage, listNamedPages,
+    createNamedPage, getNamedPage, switchToNamedPage, removeNamedPage, listNamedPages,
     saveState,
     rotateSnapshot, saveSnapshot, getCurrSnapshot, getLastSnapshot,
     getConsoleMessages, getNetworkRequests, clearConsoleMessages, clearNetworkRequests,
@@ -31,6 +31,20 @@ const { shapeCookies, cookiesForPage, resolveUploadPaths } = require('../utils/c
 
 const { checkOutputPath, checkInputPath, safeFilename, getWorkspaceRoots } = require('../utils/path-guard');
 const { resolveImageInput } = require('../core/image-input');
+
+const MAX_PAYLOAD_SUMMARY_LENGTH = 2000;
+const PAYLOAD_SUMMARY_SUFFIX = '\n… Full result in structuredContent.';
+
+function payloadResult(summary, structuredContent, isError = false) {
+    const text = summary.length > MAX_PAYLOAD_SUMMARY_LENGTH
+        ? summary.slice(0, MAX_PAYLOAD_SUMMARY_LENGTH - PAYLOAD_SUMMARY_SUFFIX.length).replace(/[\uD800-\uDBFF]$/, '') + PAYLOAD_SUMMARY_SUFFIX
+        : summary;
+    return {
+        content: [{ type: 'text', text }],
+        structuredContent,
+        ...(isError ? { isError: true } : {}),
+    };
+}
 
 /**
  * Resolve a browser_fill_form key into a selector that actually matches.
@@ -1624,9 +1638,9 @@ async function assertCondition(page, args) {
         try {
             const visible = await page.locator(target).first().isVisible({ timeout: 5000 });
             if (visible) return { content: [{ type: 'text', text: `[PASS] ${target} is visible` }] };
-            return { content: [{ type: 'text', text: `[FAIL] ${target} is not visible` }] };
+            return { content: [{ type: 'text', text: `[FAIL] ${target} is not visible` }], isError: true };
         } catch (e) {
-            return { content: [{ type: 'text', text: `[FAIL] ${target} — ${e.message}` }] };
+            return { content: [{ type: 'text', text: `[FAIL] ${target} — ${e.message}` }], isError: true };
         }
     }
 
@@ -1639,20 +1653,20 @@ async function assertCondition(page, args) {
                 const start = Math.max(0, idx - 50);
                 const end = Math.min(content.length, idx + args.expected.length + 50);
                 const context = (start > 0 ? '...' : '') + content.substring(start, end) + (end < content.length ? '...' : '');
-                return { content: [{ type: 'text', text: `[PASS] Found "${args.expected}" in ${target}`, data: { found: true, context } }] };
+                return payloadResult(`[PASS] Found "${args.expected}" in ${target}`, { found: true, context });
             }
-            return { content: [{ type: 'text', text: `[FAIL] "${args.expected}" not found in ${target} (${content.length} chars)`, data: { found: false, text: content.substring(0, 300) } }] };
+            return payloadResult(`[FAIL] "${args.expected}" not found in ${target} (${content.length} chars)`, { found: false, text: content.substring(0, 300) }, true);
         } catch (e) {
-            return { content: [{ type: 'text', text: `[FAIL] ${target} — ${e.message}` }] };
+            return { content: [{ type: 'text', text: `[FAIL] ${target} — ${e.message}` }], isError: true };
         }
     }
 
     if (type === 'url') {
         const currentUrl = page.url();
         if (currentUrl.includes(target)) {
-            return { content: [{ type: 'text', text: `[PASS] URL contains "${target}"`, data: { match: true, url: currentUrl } }] };
+            return payloadResult(`[PASS] URL contains "${target}"`, { match: true, url: currentUrl });
         }
-        return { content: [{ type: 'text', text: `[FAIL] URL does not contain "${target}"`, data: { match: false, url: currentUrl } }] };
+        return payloadResult(`[FAIL] URL does not contain "${target}"`, { match: false, url: currentUrl }, true);
     }
 
     if (type === 'js') {
@@ -1700,9 +1714,9 @@ async function scrollPage(page, args) {
     return { content: [{ type: 'text', text: `Unsupported scroll mode: ${mode}` }], isError: true };
 }
 
-async function handleToolCall(name, args = {}) {
+async function handleToolCall(name, args = {}, targetPage) {
     ({ name, args } = normalizeToolCall(name, args));
-    const page = name === 'browser_image_analyze' ? null : await getPage();
+    const page = name === 'browser_image_analyze' ? null : (targetPage ?? await getPage());
 
     switch (name) {
         // Navigation
@@ -2525,7 +2539,7 @@ async function handleToolCall(name, args = {}) {
                 result.image = processedBuffer.toString('base64');
             }
 
-            return { content: [{ type: 'text', text: result.text, data: result }] };
+            return payloadResult(result.text, result);
         }
 
         case 'browser_visual_analyze': {
@@ -2551,7 +2565,7 @@ async function handleToolCall(name, args = {}) {
                     maxTextLines: args.maxTextLines,
                     maxTokens: args.maxTokens,
                 });
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2), data: result }] };
+                return payloadResult(JSON.stringify(result, null, 2), result);
             } catch (error) {
                 return { content: [{ type: 'text', text: `Mirage visual analysis failed: ${error.message}` }], isError: true };
             }
@@ -2577,7 +2591,7 @@ async function handleToolCall(name, args = {}) {
                     maxTextLines: args.maxTextLines,
                     maxTokens: args.maxTokens,
                 });
-                return { content: [{ type: 'text', text: JSON.stringify(result, null, 2), data: result }] };
+                return payloadResult(JSON.stringify(result, null, 2), result);
             } catch (error) {
                 return { content: [{ type: 'text', text: `Mirage image analysis failed: ${error.message}` }], isError: true };
             }
@@ -2637,10 +2651,10 @@ async function handleToolCall(name, args = {}) {
                         return { content: [{ type: 'text', text: `Macro path blocked: ${e.message}` }], isError: true };
                     }
                     fs.writeFileSync(filePath, output);
-                    return { content: [{ type: 'text', text: `Macro saved: ${filePath}\n${actions.length} actions recorded.`, data: { filePath, actionCount: actions.length } }] };
+                    return payloadResult(`Macro saved: ${filePath}\n${actions.length} actions recorded.`, { filePath, actionCount: actions.length });
                 }
 
-                return { content: [{ type: 'text', text: `${actions.length} actions recorded.`, data: { actions, script: output } }] };
+                return payloadResult(`${actions.length} actions recorded.`, { actions, script: output });
             }
 
             if (action === 'clear') {
@@ -2650,13 +2664,13 @@ async function handleToolCall(name, args = {}) {
 
             if (action === 'list') {
                 const actions = recorder.getActions();
-                return { content: [{ type: 'text', text: `${actions.length} actions in buffer.`, data: actions }] };
+                return payloadResult(`${actions.length} actions in buffer.`, { actions });
             }
 
             if (action === 'export') {
                 const macroName = name || 'macro';
                 const output = recorder.generate(macroName);
-                return { content: [{ type: 'text', text: output || 'No actions recorded.', data: { script: output } }] };
+                return payloadResult(output || 'No actions recorded.', { script: output });
             }
         }
 
@@ -2695,15 +2709,22 @@ async function handleToolCall(name, args = {}) {
                     if (toolName === 'browser_record_macro') continue;
 
                     // Execute via the tool handler
-                    const result = await handleToolCall(toolName, toolArgs);
-                    results.push({ action: toolName, success: true });
+                    const result = await handleToolCall(toolName, toolArgs, targetPage);
                     await page.waitForTimeout(delay);
+                    if (result.isError) {
+                        const error = result.content.find(block => block.type === 'text')?.text || `${toolName} failed`;
+                        results.push({ action: toolName, error });
+                    } else {
+                        results.push({ action: toolName, success: true });
+                    }
                 } catch (e) {
                     results.push({ action: action.type || action.tool, error: e.message });
                 }
             }
 
-            return { content: [{ type: 'text', text: `Replayed ${results.length} actions (${results.filter(r => r.success).length} succeeded).`, data: results }] };
+            if (dryRun) return payloadResult(`Dry run: ${results.length} actions.`, { results });
+            const succeeded = results.filter(result => result.success).length;
+            return payloadResult(`Replayed ${results.length} actions (${succeeded} succeeded).`, { results }, succeeded !== results.length);
         }
 
         // ── Phase 3: Parallel Execution ──────────────────────────────────────
@@ -2716,13 +2737,10 @@ async function handleToolCall(name, args = {}) {
                 const startTime = Date.now();
                 const taskResults = [];
 
-                // Switch to the named page
-                const switched = await switchToNamedPage(pageName);
-                if (!switched) {
+                const taskPage = getNamedPage(pageName);
+                if (!taskPage || taskPage.isClosed()) {
                     return { page: pageName, error: `Page "${pageName}" not found`, results: [] };
                 }
-
-                const taskPage = getPage();
 
                 for (const action of actions) {
                     if (Date.now() - startTime > maxTime) {
@@ -2732,8 +2750,8 @@ async function handleToolCall(name, args = {}) {
 
                     try {
                         // Execute action on this page
-                        const result = await handleToolCall(action.tool, action.args || {});
-                        taskResults.push({ action: action.tool, success: true });
+                        const result = await handleToolCall(action.tool, action.args || {}, taskPage);
+                        taskResults.push({ action: action.tool, success: !result.isError, result });
                     } catch (e) {
                         taskResults.push({ action: action.tool, error: e.message });
                     }
@@ -2745,12 +2763,14 @@ async function handleToolCall(name, args = {}) {
             // Execute all tasks concurrently
             const allResults = await Promise.all(tasks.map(executeTask));
 
-            // Restore to first named page
+            // Keep the first named page active after the batch.
             const firstPage = tasks[0]?.page;
-            if (firstPage) await switchToNamedPage(firstPage);
+            const firstNamedPage = firstPage && getNamedPage(firstPage);
+            if (firstNamedPage && !firstNamedPage.isClosed()) await switchToNamedPage(firstPage);
 
             const summary = allResults.map(r => `${r.page}: ${r.error || r.results.filter(x => x.success).length + '/' + r.results.length + ' ok'}`).join('\n');
-            return { content: [{ type: 'text', text: `Parallel execution complete:\n${summary}`, data: allResults }] };
+            const failed = allResults.some(task => task.error || task.results.some(action => !action.success));
+            return payloadResult(`Parallel execution complete:\n${summary}`, { results: allResults }, failed);
         }
 
         // ── Phase 2: API Capture ─────────────────────────────────────────────
@@ -2821,27 +2841,26 @@ async function handleToolCall(name, args = {}) {
                     delete page._apiHandlers[pattern];
                 }
                 apiCaptureActive = false;
-                const count = capturedAPIs.length;
-                return { content: [{ type: 'text', text: `API capture stopped. ${count} responses captured.`, data: capturedAPIs }] };
+                const responses = capturedAPIs.slice();
+                return payloadResult(`API capture stopped. ${responses.length} responses captured.`, { responses });
             }
 
             if (action === 'get') {
-                const filtered = args.pattern
+                const responses = args.pattern
                     ? capturedAPIs.filter(d => d.url.includes(args.pattern))
-                    : capturedAPIs;
-                return { content: [{ type: 'text', text: `${filtered.length} API responses.`, data: filtered }] };
+                    : capturedAPIs.slice();
+                return payloadResult(`${responses.length} API responses.`, { responses });
             }
         }
 
         case 'browser_get_captured_apis': {
-            let data = capturedAPIs;
-            if (args.pattern) {
-                data = data.filter(d => d.url.includes(args.pattern));
-            }
+            const responses = args.pattern
+                ? capturedAPIs.filter(d => d.url.includes(args.pattern))
+                : capturedAPIs.slice();
             if (args.clearAfter) {
                 capturedAPIs = [];
             }
-            return { content: [{ type: 'text', text: `${data.length} API responses.`, data }] };
+            return payloadResult(`${responses.length} API responses.`, { responses });
         }
 
         // ── Phase 2: Batch Quiz ──────────────────────────────────────────────
@@ -2957,7 +2976,7 @@ async function handleToolCall(name, args = {}) {
                 }
             }
 
-            return { content: [{ type: 'text', text: `Batch answered: ${results.answered}/${answers.length}.`, data: results }] };
+            return payloadResult(`Batch answered: ${results.answered}/${answers.length}.`, results, results.errors.length > 0);
         }
 
         // ── Phase 2: Tab Awareness ───────────────────────────────────────────
