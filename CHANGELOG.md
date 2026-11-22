@@ -1,3 +1,13 @@
+## [3.3.6] - 2026-11-23
+
+### Fixed
+- `browser_extract_schema` reads JSON-LD (`@graph` included), `itemprop` microdata and tables before its keyword heuristic, so `Product.name`/`offers.price` no longer fall through to the `h1`. (`browser-mcp#26`)
+- `browser_emulate` sets `navigator.language(s)` and `Accept-Language`, reports the language the page actually sees, and fails with `isError` when it stays unset.
+- `browser_visual_analyze` mirrors every box as normalised `bbox` + `bboxPx`, and adds `ocrQuality` warning that Mirage OCR is weaker than `browser_ocr`.
+- `browser_handle_captcha(verify:true)` reports no CAPTCHA present instead of an error.
+- `browser_get_state` returns `checked` and `name` for checkboxes/radios and every visible text block via `textBlocks` (with `text` joined from the same list).
+- `switch_tab` out of range is `isError`; replacing an intercept rule warns about the prior action; `cache_stats` reports a real `hits` count.
+
 ## [3.3.5] - 2026-11-22
 
 ### Changed
