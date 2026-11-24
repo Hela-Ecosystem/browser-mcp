@@ -30,7 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { validateURL, resolveAndValidate } = require('../utils/url-validator');
-const { shapeCookies, cookiesForPage, resolveUploadPaths } = require('../utils/cookie-scope');
+const { shapeCookies, cookiesForPage, cookiesForStorage, cookiesForLoad, resolveUploadPaths } = require('../utils/cookie-scope');
 
 const { checkOutputPath, checkInputPath, safeFilename, getWorkspaceRoots } = require('../utils/path-guard');
 const { CAPTCHA_SELECTORS } = require('../utils/selectors');
@@ -2293,10 +2293,11 @@ async function handleToolCall(name, args = {}, targetPage) {
                 return { content: [{ type: 'text', text: `Session path blocked: ${e.message}` }], isError: true };
             }
 
-            const shaped = await cookiesForPage(page.context(), page.url(), {
-                includeValues: args.includeCookieValues === true,
-            });
-            const sessionData = { cookies: shaped.cookies, cookieScope: shaped.scope };
+            // The session file exists to be loaded back, so it keeps real values (mode 600,
+            // page-scoped). Redaction applies to tool output, not to what is persisted:
+            // a redacted save would overwrite live cookies on load (browser-mcp#22).
+            const shaped = await cookiesForPage(page.context(), page.url(), { includeValues: true });
+            const sessionData = { cookies: cookiesForStorage(shaped.cookies), cookieScope: shaped.scope };
 
             if (args.includeStorage) {
                 sessionData.storage = await page.evaluate(() => ({
@@ -2308,6 +2309,7 @@ async function handleToolCall(name, args = {}, targetPage) {
 
             // Secret handling: save session containing auth credentials with owner-only (0600) permissions
             fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), { mode: 0o600 });
+            fs.chmodSync(sessionPath, 0o600); // mode only applies on creation; tighten an overwritten file too
             const extras = args.includeStorage ? ' + localStorage/sessionStorage' : '';
             return { content: [{ type: 'text', text: `Session "${safeName}" saved (cookies${extras}).` }] };
         }
@@ -2331,8 +2333,13 @@ async function handleToolCall(name, args = {}, targetPage) {
             const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
 
             // Support both old format (array of cookies) and new format ({ cookies, storage })
-            const cookies = Array.isArray(sessionData) ? sessionData : sessionData.cookies;
-            await page.context().addCookies(cookies);
+            const savedCookies = Array.isArray(sessionData) ? sessionData : sessionData.cookies;
+            const { usable: cookies, skippedRedacted } = cookiesForLoad(savedCookies);
+            if (skippedRedacted > 0 && cookies.length === 0) {
+                return { content: [{ type: 'text', text: `Session "${safeName}" was saved with redacted cookie values (${skippedRedacted}) and cannot be restored; save it again.` }], isError: true };
+            }
+            if (cookies.length) await page.context().addCookies(cookies);
+            const skippedNote = skippedRedacted > 0 ? ` ${skippedRedacted} redacted cookie(s) skipped; save the session again to restore them.` : '';
 
             if (!Array.isArray(sessionData) && sessionData.storage) {
                 const { localStorage: ls, sessionStorage: ss, origin } = sessionData.storage;
@@ -2341,12 +2348,12 @@ async function handleToolCall(name, args = {}, targetPage) {
                         Object.entries(lsData).forEach(([k, v]) => localStorage.setItem(k, v));
                         Object.entries(ssData).forEach(([k, v]) => sessionStorage.setItem(k, v));
                     }, [ls, ss]);
-                    return { content: [{ type: 'text', text: `Session "${safeName}" loaded (cookies + localStorage/sessionStorage).` }] };
+                    return { content: [{ type: 'text', text: `Session "${safeName}" loaded (cookies + localStorage/sessionStorage).${skippedNote}` }] };
                 }
-                return { content: [{ type: 'text', text: `Session "${safeName}" loaded (cookies only — storage skipped: page origin mismatch with saved origin "${origin}").` }] };
+                return { content: [{ type: 'text', text: `Session "${safeName}" loaded (cookies only — storage skipped: page origin mismatch with saved origin "${origin}").${skippedNote}` }] };
             }
 
-            return { content: [{ type: 'text', text: `Session "${safeName}" loaded.` }] };
+            return { content: [{ type: 'text', text: `Session "${safeName}" loaded.${skippedNote}` }] };
         }
         case 'browser_list_sessions': {
             const sessionDir = path.join(__dirname, '../../sessions');
@@ -2407,7 +2414,8 @@ async function handleToolCall(name, args = {}, targetPage) {
             // P1-C2: captures are verbatim page state — stamp source provenance.
             state.provenance = captureProvenance(page);
 
-            fs.writeFileSync(outputPath, JSON.stringify(state, null, 2));
+            fs.writeFileSync(outputPath, JSON.stringify(state, null, 2), { mode: 0o600 });
+            fs.chmodSync(outputPath, 0o600); // state can include storage tokens; mode only applies on creation
             const art = hashArtifact(outputPath);
             const sizeKb = (art.size / 1024).toFixed(1);
             return { content: [{ type: 'text', text: `State exported to ${outputPath} (${sizeKb} KB) [sha256:${art.sha256}].` }] };

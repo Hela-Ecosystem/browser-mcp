@@ -15,7 +15,7 @@
     "mcp": "node src/server.js",
     "setup:mirage": "node scripts/setup-mirage.mjs",
     "build": "echo 'No build step required for JS-only server'",
-    "test": "node -r dotenv/config test/browser-envelope.test.cjs && node -r dotenv/config test/cytosol-safety.test.cjs && node -r dotenv/config test/tool-consolidation.test.cjs && node test/image-input.test.cjs && node test/server-version.test.cjs && node test/headless-default.test.cjs && node test/context-recovery.test.cjs && node test/fill-form-keys.test.cjs && node test/table-header.test.cjs && node test/cookie-scope.test.cjs && node --test test/tool-payloads.test.cjs test/image-bbox-units.test.cjs test/dialogs-and-popups.test.cjs test/issue-25.test.cjs test/issue-26.test.cjs test/issue-21.test.cjs",
+    "test": "node -r dotenv/config test/browser-envelope.test.cjs && node -r dotenv/config test/cytosol-safety.test.cjs && node -r dotenv/config test/tool-consolidation.test.cjs && node test/image-input.test.cjs && node test/server-version.test.cjs && node test/headless-default.test.cjs && node test/context-recovery.test.cjs && node test/fill-form-keys.test.cjs && node test/table-header.test.cjs && node test/cookie-scope.test.cjs && node --test test/tool-payloads.test.cjs test/image-bbox-units.test.cjs test/dialogs-and-popups.test.cjs test/issue-25.test.cjs test/issue-26.test.cjs test/issue-21.test.cjs test/issue-22-residuals.test.cjs",
     "clean": "echo 'Nothing to clean'",
     "test:browserless": "node scripts/verify-browserless.mjs"
   }
