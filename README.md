@@ -356,6 +356,7 @@ Register in your MCP client config:
 | `BROWSER_LAUNCH_BACKOFF` | `1000` | Base delay (ms) between launch retries; doubled each retry. |
 | `ALLOW_PRIVATE_IPS` | `false` | Allow navigation to private/internal IPs (localhost, 192.168.x, etc.) — SSRF protection is enabled by default. |
 | `ALLOW_ALL_SCHEMES` | `false` | Allow all URL schemes (`file://`, `data://`, `javascript://`, etc.) — only `http`/`https` allowed by default. |
+| `HELA_SESSIONS_DIR` | `<repo>/sessions` | Where `browser_save_session` / `browser_load_session` / `browser_list_sessions` keep session files (written owner-only, 0600). |
 | `HELA_BROWSER_UPLOAD_ANY` | `false` | `browser_upload` only reads files inside `HELA_ALLOWED_ROOTS` (the working directory when unset) and always refuses credential and system locations (`~/.ssh`, `~/.aws`, `~/.config`, `.env*`, `/etc`, …), even when a root is `/`. Set to `true` to lift both checks. |
 | `HELA_BROWSER_ALLOW_EVAL` | *unset = off* | Set to `true` to allow `browser_evaluate` and `browser_assert` with `conditionType="js"` (R3 privilege). Off = denied. |
 | `HELA_ALLOWED_ROOTS` | *unset = off* | Colon-separated directory paths for Cytosol file output containment. If set, export/trace/download/session paths must resolve inside one of these roots. |

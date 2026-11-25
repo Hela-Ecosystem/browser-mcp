@@ -30,7 +30,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { validateURL, resolveAndValidate } = require('../utils/url-validator');
-const { shapeCookies, cookiesForPage, cookiesForStorage, cookiesForLoad, resolveUploadPaths } = require('../utils/cookie-scope');
+const { shapeCookies, cookiesForPage, cookiesForStorage, cookiesForLoad, resolveUploadPaths, writePrivateFile, sessionsDir } = require('../utils/cookie-scope');
 
 const { checkOutputPath, checkInputPath, safeFilename, getWorkspaceRoots } = require('../utils/path-guard');
 const { CAPTCHA_SELECTORS } = require('../utils/selectors');
@@ -2283,7 +2283,7 @@ async function handleToolCall(name, args = {}, targetPage) {
             } catch (e) {
                 return { content: [{ type: 'text', text: `Invalid session name: ${e.message}` }], isError: true };
             }
-            const sessionDir = path.join(__dirname, '../../sessions');
+            const sessionDir = sessionsDir();
             if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
 
             const sessionPath = path.join(sessionDir, `${safeName}.json`);
@@ -2308,8 +2308,7 @@ async function handleToolCall(name, args = {}, targetPage) {
             }
 
             // Secret handling: save session containing auth credentials with owner-only (0600) permissions
-            fs.writeFileSync(sessionPath, JSON.stringify(sessionData, null, 2), { mode: 0o600 });
-            fs.chmodSync(sessionPath, 0o600); // mode only applies on creation; tighten an overwritten file too
+            writePrivateFile(sessionPath, JSON.stringify(sessionData, null, 2));
             const extras = args.includeStorage ? ' + localStorage/sessionStorage' : '';
             return { content: [{ type: 'text', text: `Session "${safeName}" saved (cookies${extras}).` }] };
         }
@@ -2320,7 +2319,7 @@ async function handleToolCall(name, args = {}, targetPage) {
             } catch (e) {
                 return { content: [{ type: 'text', text: `Invalid session name: ${e.message}` }], isError: true };
             }
-            const sessionPath = path.join(__dirname, '../../sessions', `${safeName}.json`);
+            const sessionPath = path.join(sessionsDir(), `${safeName}.json`);
             try {
                 checkOutputPath(sessionPath);
             } catch (e) {
@@ -2356,7 +2355,7 @@ async function handleToolCall(name, args = {}, targetPage) {
             return { content: [{ type: 'text', text: `Session "${safeName}" loaded.${skippedNote}` }] };
         }
         case 'browser_list_sessions': {
-            const sessionDir = path.join(__dirname, '../../sessions');
+            const sessionDir = sessionsDir();
             if (!fs.existsSync(sessionDir)) return { content: [{ type: 'text', text: 'No sessions saved yet.' }] };
 
             const files = fs.readdirSync(sessionDir).filter(f => f.endsWith('.json'));
@@ -2414,8 +2413,7 @@ async function handleToolCall(name, args = {}, targetPage) {
             // P1-C2: captures are verbatim page state — stamp source provenance.
             state.provenance = captureProvenance(page);
 
-            fs.writeFileSync(outputPath, JSON.stringify(state, null, 2), { mode: 0o600 });
-            fs.chmodSync(outputPath, 0o600); // state can include storage tokens; mode only applies on creation
+            writePrivateFile(outputPath, JSON.stringify(state, null, 2)); // state can include storage tokens
             const art = hashArtifact(outputPath);
             const sizeKb = (art.size / 1024).toFixed(1);
             return { content: [{ type: 'text', text: `State exported to ${outputPath} (${sizeKb} KB) [sha256:${art.sha256}].` }] };

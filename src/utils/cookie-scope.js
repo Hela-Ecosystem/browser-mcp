@@ -10,7 +10,9 @@
  * the workspace rather than the whole disk.
  */
 
+const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { checkInputPath, getWorkspaceRoots } = require('./path-guard');
 
 const REDACTED_COOKIE_VALUE = '[redacted]';
@@ -78,7 +80,7 @@ async function cookiesForPage(context, url, { allDomains = false, includeValues 
 
 const SENSITIVE_DIRS = new Set(['.ssh', '.aws', '.gnupg', '.gpg', '.kube', '.docker', '.config', '.azure', '.password-store']);
 const SENSITIVE_FILES = [
-    /^\.env(\..+)?$/i, /^\.netrc$/i, /^\.npmrc$/i, /^\.pypirc$/i, /^\.git-credentials$/i,
+    /^\.env/i, /^\.netrc$/i, /^\.npmrc$/i, /^\.pypirc$/i, /^\.git-credentials$/i,
     /^id_(rsa|dsa|ecdsa|ed25519)$/i, /^\.(bash|zsh|python|node|mysql|psql)_history$/i,
 ];
 const SENSITIVE_PREFIXES = ['/etc/', '/proc/', '/sys/', '/dev/'];
@@ -126,7 +128,40 @@ function resolveUploadPaths(filePaths, { cwd = process.cwd(), allowAny = process
     });
 }
 
+/**
+ * Write `data` to `dest` owner-only (0600), atomically. The bytes go to a fresh 0600
+ * temp file beside the destination and are renamed over it, so an existing 0644 file
+ * is replaced rather than chmod'd by path, and a failure never leaves secrets behind
+ * under the old permissions (browser-mcp#22).
+ */
+function writePrivateFile(dest, data) {
+    const tmp = path.join(path.dirname(dest), `.${path.basename(dest)}.${crypto.randomBytes(6).toString('hex')}.tmp`);
+    let fd;
+    try {
+        fd = fs.openSync(tmp, 'wx', 0o600);
+        fs.writeFileSync(fd, data);
+        fs.fchmodSync(fd, 0o600);
+        fs.fsyncSync(fd);
+        fs.closeSync(fd);
+        fd = undefined;
+        fs.renameSync(tmp, dest);
+    } catch (error) {
+        if (fd !== undefined) fs.closeSync(fd);
+        fs.rmSync(tmp, { force: true });
+        throw error;
+    }
+}
+
+/** Where saved sessions live; HELA_SESSIONS_DIR overrides the in-repo default. */
+function sessionsDir() {
+    return process.env.HELA_SESSIONS_DIR
+        ? path.resolve(process.env.HELA_SESSIONS_DIR)
+        : path.join(__dirname, '../../sessions');
+}
+
 module.exports = {
+    writePrivateFile,
+    sessionsDir,
     shapeCookies,
     cookiesForPage,
     cookiesForStorage,
