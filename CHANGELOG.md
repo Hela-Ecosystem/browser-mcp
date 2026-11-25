@@ -1,3 +1,13 @@
+## [3.3.8] - 2026-11-25
+
+### Fixed
+- `browser_save_session` → `browser_load_session` no longer corrupts cookies. A default save wrote `value: "[redacted]"` and `load_session` added it back over the live cookie, silently logging the user out (a regression from the 3.3.7-era redaction fix). The session file is mode 0600 and page-scoped, so it now keeps real values; redaction stays on what the tools return. `load_session` also skips masked cookies from files saved by earlier releases, restores the rest, reports how many it skipped, and returns an error when nothing is restorable. (`browser-mcp#22`)
+- `browser_upload` always refuses credential and system locations (`.ssh`, `.aws`, `.gnupg`, `.config`, `.kube`, `.docker`, every `.env*` file, `id_*`, shell history, `/etc`, `/proc`, `/sys`, `/dev`), judged on the real path so a symlink is checked by its target, even when `HELA_ALLOWED_ROOTS` is `/` or contains `$HOME`. `HELA_BROWSER_UPLOAD_ANY=true` still lifts both checks.
+- `browser_export_state` and `browser_save_session` write owner-only (0600) atomically: a private temp file is renamed over the destination, so an existing world-readable file is replaced rather than chmod'd by path and a failure cannot leave secrets under the old permissions.
+
+### Added
+- `HELA_SESSIONS_DIR` sets where session files are kept (default `sessions/` in the checkout). The regression suite uses a per-run directory so it can never touch real saved sessions.
+
 ## [3.3.7] - 2026-11-23
 
 ### Fixed
