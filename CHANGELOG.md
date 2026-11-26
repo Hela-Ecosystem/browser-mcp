@@ -99,8 +99,6 @@
 
 All notable changes to this project.
 
-## [Unreleased]
-
 ### Fixed
 - Keep the standalone Mirage setup command usable on Linux, macOS, and native Windows by discovering Python cross-platform and creating the managed virtual environment in the repository data directory.
 
@@ -130,4 +128,3 @@ All notable changes to this project.
 
 ### Changed
 - **Version reset to 3.0.0** — per-server version metadata baseline reset (Phase 7). All `package.json`, MCP `ServerInfo.version`, and HTTP metadata now report `3.0.0`. This is a metadata/interface baseline reset; for `hela-plastid` it is not an upgrade from the previous `4.2.0` advert.
-
